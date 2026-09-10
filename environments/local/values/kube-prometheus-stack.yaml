@@ -1,6 +1,18 @@
 # Per-environment (local) overrides for kube-prometheus-stack — prod hardening.
 kube-prometheus-stack:
 
+  # Docker Desktop does not expose the control-plane component metrics ports on
+  # the node IP, so these scrape targets are permanently "down" (false alerts).
+  # A real (kubeadm) cluster exposes them — keep these enabled there.
+  kubeControllerManager:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kubeEtcd:
+    enabled: false
+  kubeProxy:
+    enabled: false
+
   prometheus:
     prometheusSpec:
       # Retention: time + a hard size cap so the PVC can't fill.
