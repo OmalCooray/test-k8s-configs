@@ -1,0 +1,50 @@
+# Per-environment (local) overrides for trino — production hardening.
+trino:
+  server:
+    workers: 2
+    config:
+      query:
+        # Cluster-wide memory ceiling for a single query. Keep below
+        # (workers x usable heap). 2 workers x ~1.5G usable -> 3GB.
+        maxMemory: "3GB"
+    # Workers autoscale on CPU; KEDA-on-queue is the next step.
+    autoscaling:
+      enabled: true
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 60
+
+  coordinator:
+    jvm:
+      # Explicit heap under the container limit (leave headroom for Trino's
+      # off-heap / direct memory).
+      maxHeapSize: "2G"
+    resources:
+      requests: {cpu: 500m, memory: 2Gi}
+      limits: {cpu: "2", memory: 3Gi}
+    livenessProbe:
+      initialDelaySeconds: 30
+    readinessProbe:
+      initialDelaySeconds: 20
+
+  worker:
+    jvm:
+      maxHeapSize: "2G"
+    resources:
+      requests: {cpu: 500m, memory: 2Gi}
+      limits: {cpu: "2", memory: 3Gi}
+    # Let in-flight queries drain before a worker terminates (scale-down, drain).
+    gracefulShutdown:
+      enabled: true
+      gracePeriodSeconds: 120
+    terminationGracePeriodSeconds: 300
+    # Spread the 2+ workers across nodes when the cluster has more than one.
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: trino
+                  app.kubernetes.io/component: worker
+              topologyKey: kubernetes.io/hostname

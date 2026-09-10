@@ -1,0 +1,10 @@
+apiVersion: v2
+name: trino
+description: Wrapper chart for trino (trino 1.42.2)
+type: application
+version: 0.1.0
+appVersion: "1.42.2"
+dependencies:
+  - name: trino
+    version: 1.42.2
+    repository: https://trinodb.github.io/charts
