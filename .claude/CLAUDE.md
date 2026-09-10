@@ -15,6 +15,7 @@ _(Updated by `/argocd-add-chart`.)_
 
 | App | Upstream chart | Version | Repo |
 |-----|----------------|---------|------|
+| airflow | airflow | 1.22.0 | https://airflow.apache.org |
 
 ## Deployment matrix
 
