@@ -1,0 +1,10 @@
+apiVersion: v2
+name: metabase
+description: Wrapper chart for metabase (metabase 2.27.6)
+type: application
+version: 0.1.0
+appVersion: "2.27.6"
+dependencies:
+  - name: metabase
+    version: 2.27.6
+    repository: https://pmint93.github.io/helm-charts/

@@ -1,0 +1,31 @@
+# Base overrides for the upstream "metabase" chart (pmint93/metabase).
+# Environment-agnostic. Per-env sizing/HA is in environments/<env>/values/metabase.yaml.
+metabase:
+  # --- Application database: external MySQL, never the default H2. ---
+  database:
+    type: mysql
+    # Secret created out of band (plugin Phase 3 will manage this).
+    existingSecret: metabase-db
+    existingSecretUsernameKey: username
+    existingSecretPasswordKey: password
+    existingSecretHostKey: host
+    existingSecretPortKey: port
+    existingSecretDatabaseNameKey: dbname
+    # Stable key that encrypts data-source credentials Metabase stores in its DB.
+    existingSecretEncryptionKeyKey: encryptionKey
+
+  # Health probes ship enabled by default in this chart — keep them.
+
+  # Run non-root with a read-only-friendly context.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 2000
+    fsGroup: 2000
+  securityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+
+  service:
+    externalPort: 80
+    internalPort: 3000

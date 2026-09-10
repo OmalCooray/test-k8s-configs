@@ -1,0 +1,33 @@
+# Per-environment (local) overrides for metabase — production hardening.
+metabase:
+  replicaCount: 2
+
+  pdb:
+    create: true
+    minAvailable: 1
+    maxUnavailable: ""   # mutually exclusive with minAvailable
+
+  resources:
+    requests:
+      cpu: 300m
+      memory: 1Gi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    targetCPUUtilizationPercentage: 75
+
+  # spread the 2 replicas across nodes when the cluster has more than one
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app: metabase
+            topologyKey: kubernetes.io/hostname

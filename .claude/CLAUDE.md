@@ -17,6 +17,7 @@ _(Updated by `/argocd-add-chart`.)_
 |-----|----------------|---------|------|
 | airflow | airflow | 1.22.0 | https://airflow.apache.org |
 | mysql | mysql | 3.1.4 | https://groundhog2k.github.io/helm-charts/ |
+| metabase | metabase | 2.27.6 | https://pmint93.github.io/helm-charts/ |
 
 ## Deployment matrix
 
@@ -26,3 +27,4 @@ _(Updated by `/argocd-deploy`.)_
 |-----|----------------|
 | airflow | yes |
 | mysql | yes |
+| metabase | yes |
