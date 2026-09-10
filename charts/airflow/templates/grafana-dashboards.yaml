@@ -1,0 +1,17 @@
+{{- if (.Values.grafanaDashboards).enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Chart.Name }}-dashboards
+  labels:
+    grafana_dashboard: "1"
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/managed-by: argocd-gitops-plugin
+  annotations:
+    grafana_folder: {{ .Values.grafanaDashboards.folder | default .Chart.Name | quote }}
+data:
+  {{- range $path, $_ := .Files.Glob "grafana-dashboards/*.json" }}
+  {{ base $path }}: |
+    {{- $.Files.Get $path | nindent 4 }}
+  {{- end }}
+{{- end }}
