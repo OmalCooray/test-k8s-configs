@@ -1,0 +1,31 @@
+# Base overrides for the upstream "mysql" chart (groundhog2k/mysql).
+# Environment-agnostic settings live here; per-env sizing is in the overlay.
+mysql:
+  fullnameOverride: airflow-mysql
+
+  # Airflow requires these MySQL server settings.
+  customConfig: |
+    [mysqld]
+    explicit_defaults_for_timestamp = 1
+    character-set-server = utf8mb4
+    collation-server = utf8mb4_unicode_ci
+
+  settings:
+    # Secret with MYSQL_ROOT_PASSWORD (created out of band, not in git).
+    existingSecret: airflow-mysql
+
+  # Creates the `airflow` database + user on first boot from the same Secret.
+  userDatabase:
+    existingSecret: airflow-mysql
+    name:
+      secretKey: MYSQL_DATABASE
+    user:
+      secretKey: MYSQL_USER
+    password:
+      secretKey: MYSQL_PASSWORD
+
+  service:
+    port: 3306
+
+  # groundhog2k/mysql ships a hardened securityContext by default
+  # (runAsNonRoot, readOnlyRootFilesystem, drop ALL) — keep it.

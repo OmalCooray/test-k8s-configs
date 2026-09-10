@@ -1,0 +1,10 @@
+apiVersion: v2
+name: mysql
+description: Wrapper chart for mysql (mysql 3.1.4)
+type: application
+version: 0.1.0
+appVersion: "3.1.4"
+dependencies:
+  - name: mysql
+    version: 3.1.4
+    repository: https://groundhog2k.github.io/helm-charts/
