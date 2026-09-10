@@ -37,9 +37,10 @@ airflow:
   # --- Executor: KubernetesExecutor. No Celery workers / Redis / result
   #     backend — tasks run as their own pods. Fewer stateful moving parts. ---
   executor: KubernetesExecutor
-  config:
-    core:
-      load_examples: 'True'   # local only — bundled example DAGs for demo/observability
+  # The official airflow image ignores config.core.load_examples; use the env var.
+  env:
+    - name: AIRFLOW__CORE__LOAD_EXAMPLES
+      value: 'True'   # local only — bundled example DAGs for demo / dashboard data
   redis:
     enabled: false
 
