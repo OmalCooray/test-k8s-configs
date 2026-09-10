@@ -1,15 +1,119 @@
-# Per-environment overrides for airflow in local. Nest under the chart name.
+# Per-environment overrides for airflow in local — hardened toward production.
 #
-# Argo CD compatibility: the Airflow chart ships its db-migration and create-user
-# jobs as Helm hooks. Argo CD does not run Helm's pre-install hooks the way Helm
-# does, so the jobs never fire and every component hangs on "Waiting for
-# migrations". Setting useHelmHooks=false turns them into ordinary resources that
-# the chart annotates with Argo CD sync-waves. This is the documented pattern
-# (Airflow chart docs → "Using with Argo CD").
+# Applied on top of charts/airflow/values.yaml by the Argo CD Application
+# (multi-source $values). Everything nests under the "airflow" subchart name.
+#
+# Prerequisite Secrets (created out of band, not in git — plugin Phase 3 will
+# manage these):
+#   airflow-mysql          keys: connection, MYSQL_* (shared with the mysql app)
+#   airflow-fernet-key     key:  fernet-key
+#   airflow-api-secret-key key:  api-secret-key
+#   airflow-jwt-secret     key:  jwt-secret
 airflow:
+  # --- Argo CD compatibility: run the chart's jobs as ordinary synced
+  #     resources instead of Helm hooks (Argo CD does not run Helm hooks),
+  #     and give them bounded resources. ---
   createUserJob:
     useHelmHooks: false
     applyCustomEnv: false
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {cpu: 500m, memory: 512Mi}
   migrateDatabaseJob:
     useHelmHooks: false
     applyCustomEnv: false
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {cpu: 500m, memory: 1Gi}
+
+  # --- Executor: KubernetesExecutor. No Celery workers / Redis / result
+  #     backend — tasks run as their own pods. Fewer stateful moving parts. ---
+  executor: KubernetesExecutor
+  redis:
+    enabled: false
+
+  # --- Metadata database: external MySQL (no bundled Postgres subchart). ---
+  postgresql:
+    enabled: false
+  data:
+    metadataSecretName: airflow-mysql   # key: connection = mysql://airflow:***@airflow-mysql:3306/airflow
+
+  # --- Stable secret keys (rotating keys log everyone out / break decryption). ---
+  fernetKeySecretName: airflow-fernet-key
+  apiSecretKeySecretName: airflow-api-secret-key
+  jwtSecretName: airflow-jwt-secret
+
+  # --- Logs: KubernetesExecutor task pods write logs to a shared PVC so they
+  #     survive pod termination. A remote logging backend is the better
+  #     long-term answer; a PVC is fine for this cluster. ---
+  logs:
+    persistence:
+      enabled: true
+      size: 5Gi
+      storageClassName: hostpath
+
+  # --- High availability + resource governance per component ---
+  scheduler:
+    replicas: 2
+    logGroomerSidecar:
+      resources:
+        requests: {cpu: 10m, memory: 64Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+    podDisruptionBudget:
+      enabled: true
+      config:
+        maxUnavailable: 1
+    resources:
+      requests: {cpu: 200m, memory: 1Gi}
+      limits: {cpu: "1", memory: 2Gi}
+
+  apiServer:
+    replicas: 2
+    podDisruptionBudget:
+      enabled: true
+      config:
+        maxUnavailable: 1
+    resources:
+      requests: {cpu: 200m, memory: 1Gi}
+      limits: {cpu: "1", memory: 2Gi}
+
+  triggerer:
+    replicas: 2
+    logGroomerSidecar:
+      resources:
+        requests: {cpu: 10m, memory: 64Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+    persistence:
+      enabled: false
+    podDisruptionBudget:
+      enabled: true
+      config:
+        maxUnavailable: 1
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {cpu: 500m, memory: 1Gi}
+
+  dagProcessor:
+    replicas: 2
+    logGroomerSidecar:
+      resources:
+        requests: {cpu: 10m, memory: 64Mi}
+        limits: {cpu: 100m, memory: 128Mi}
+    podDisruptionBudget:
+      enabled: true
+      config:
+        maxUnavailable: 1
+    resources:
+      requests: {cpu: 100m, memory: 512Mi}
+      limits: {cpu: 500m, memory: 1Gi}
+
+  statsd:
+    resources:
+      requests: {cpu: 50m, memory: 128Mi}
+      limits: {cpu: 200m, memory: 256Mi}
+
+  # KubernetesExecutor task pod template
+  workers:
+    resources:
+      requests: {cpu: 200m, memory: 1Gi}
+      limits: {cpu: "1", memory: 2Gi}
