@@ -13,3 +13,7 @@ serviceMonitor:
   port: statsd-scrape
   path: /metrics
   interval: 30s
+
+# Grafana dashboards for airflow (rendered into a sidecar ConfigMap, "airflow" folder).
+grafanaDashboards:
+  enabled: true
