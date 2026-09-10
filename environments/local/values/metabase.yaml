@@ -8,12 +8,18 @@ metabase:
     maxUnavailable: ""   # mutually exclusive with minAvailable
 
   resources:
+    # Metabase idles around ~950Mi, so a 1Gi request keeps the memory-target
+    # HPA permanently saturated. Size the request to the real baseline + headroom.
     requests:
       cpu: 300m
-      memory: 1Gi
+      memory: 1536Mi
     limits:
       cpu: "1"
-      memory: 2Gi
+      memory: 2560Mi
+
+  extraEnv:
+    - name: JAVA_OPTS
+      value: "-Xmx2g"
 
   hpa:
     enabled: true
