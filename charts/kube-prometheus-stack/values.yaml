@@ -1,0 +1,30 @@
+# Base overrides for prometheus-community/kube-prometheus-stack.
+# Environment-agnostic. Per-env sizing/storage is in the overlay.
+kube-prometheus-stack:
+
+  # Discover ServiceMonitors / PodMonitors / PrometheusRules from every
+  # namespace, not just those with the chart's release label — so other apps
+  # (Airflow statsd, Metabase, etc.) can be scraped by shipping their own
+  # ServiceMonitor.
+  prometheus:
+    prometheusSpec:
+      serviceMonitorSelectorNilUsesHelmValues: false
+      podMonitorSelectorNilUsesHelmValues: false
+      ruleSelectorNilUsesHelmValues: false
+      probeSelectorNilUsesHelmValues: false
+      scrapeConfigSelectorNilUsesHelmValues: false
+
+  grafana:
+    # Admin credentials come from a Secret created out of band (key: admin-user,
+    # admin-password), never inline.
+    admin:
+      existingSecret: grafana-admin
+      userKey: admin-user
+      passwordKey: admin-password
+    defaultDashboardsTimezone: browser
+
+  # node-exporter runs on the host network / host PID by design; keep the
+  # chart's defaults (it needs that access to read node metrics).
+
+  # Alertmanager: no receivers configured here — wire real routes/receivers in
+  # the environment overlay or a follow-up PR.

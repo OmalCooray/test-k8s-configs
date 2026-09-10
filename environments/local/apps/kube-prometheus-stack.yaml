@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/OmalCooray/test-k8s-configs
+      targetRevision: master
+      path: charts/kube-prometheus-stack
+      helm:
+        valueFiles:
+          - $values/environments/local/values/kube-prometheus-stack.yaml
+    - repoURL: https://github.com/OmalCooray/test-k8s-configs
+      targetRevision: master
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  # This app manages the Prometheus-Operator CRDs. Auto-prune is disabled so a
+  # bad sync can never delete cluster-wide CRDs (and every Prometheus/Alertmanager
+  # object with them). Prune deliberately, with `argocd app sync --prune`.
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true       # CRDs exceed the 262KB last-applied annotation limit
+      - ServerSideDiff=true
