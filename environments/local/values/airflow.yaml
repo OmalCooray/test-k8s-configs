@@ -16,12 +16,20 @@ airflow:
   createUserJob:
     useHelmHooks: false
     applyCustomEnv: false
+    # Run as an Argo CD Sync hook so the completed Job (whose selector K8s
+    # mutates on start) is recreated each sync instead of drifting OutOfSync.
+    jobAnnotations:
+      argocd.argoproj.io/hook: Sync
+      argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     resources:
       requests: {cpu: 100m, memory: 256Mi}
       limits: {cpu: 500m, memory: 512Mi}
   migrateDatabaseJob:
     useHelmHooks: false
     applyCustomEnv: false
+    jobAnnotations:
+      argocd.argoproj.io/hook: Sync
+      argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
     resources:
       requests: {cpu: 100m, memory: 512Mi}
       limits: {cpu: 500m, memory: 1Gi}
