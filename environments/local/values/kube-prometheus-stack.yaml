@@ -1,0 +1,82 @@
+# Per-environment (local) overrides for kube-prometheus-stack — prod hardening.
+kube-prometheus-stack:
+
+  prometheus:
+    prometheusSpec:
+      # Retention: time + a hard size cap so the PVC can't fill.
+      retention: 15d
+      retentionSize: "8GB"
+      # Persistent storage (default is emptyDir → metrics lost on restart).
+      storageSpec:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: hostpath
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 10Gi
+      resources:
+        requests: {cpu: 300m, memory: 1Gi}
+        limits: {cpu: "2", memory: 3Gi}
+      # Single node here → 1 replica. HA Prometheus = 2 replicas behind a
+      # dedup layer (Thanos / Prometheus-agent + remote-write); note for later.
+      replicas: 1
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+
+  alertmanager:
+    alertmanagerSpec:
+      storage:
+        volumeClaimTemplate:
+          spec:
+            storageClassName: hostpath
+            accessModes: ["ReadWriteOnce"]
+            resources:
+              requests:
+                storage: 2Gi
+      resources:
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {cpu: 200m, memory: 256Mi}
+      replicas: 1
+      podDisruptionBudget:
+        enabled: true
+        maxUnavailable: 1
+
+  grafana:
+    # Persistent storage for dashboards/state. HA Grafana (replicas: 2) needs an
+    # external DB backend (e.g. the MySQL app) instead of this PVC — follow-up.
+    replicas: 1
+    persistence:
+      enabled: true
+      type: pvc
+      storageClassName: hostpath
+      size: 5Gi
+      accessModes: ["ReadWriteOnce"]
+    resources:
+      requests: {cpu: 100m, memory: 256Mi}
+      limits: {cpu: 500m, memory: 512Mi}
+    podDisruptionBudget:
+      minAvailable: 1
+
+  prometheus-node-exporter:
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {cpu: 200m, memory: 128Mi}
+
+  kube-state-metrics:
+    resources:
+      requests: {cpu: 50m, memory: 128Mi}
+      limits: {cpu: 200m, memory: 256Mi}
+
+  prometheusOperator:
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {cpu: 500m, memory: 512Mi}
+    admissionWebhooks:
+      # cert-manager is not installed here; the chart's own helm-hook job
+      # generates the webhook cert. That job is a Helm hook → in Argo CD it
+      # must run as a Sync hook (see the Argo CD notes) or the webhook has no
+      # cert and Prometheus/Alertmanager CRs are rejected.
+      patch:
+        enabled: true
