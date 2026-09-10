@@ -1,0 +1,66 @@
+{{- /*
+ServiceMonitor for {{ .Chart.Name }} — added by /argocd-add-manifest.
+Verified against monitoring.coreos.com/v1 (Prometheus Operator 0.7x–0.9x).
+
+Requires: the ServiceMonitor CRD, installed by the `kube-prometheus-stack` app.
+That app must be deployed to this environment and at an earlier sync-wave.
+
+Values (charts/<app>/values.yaml, TOP-LEVEL key `serviceMonitor:`):
+  enabled            bool   — gate (default here: rendered only when true)
+  name               string — ServiceMonitor name (default: the chart name)
+  namespace          string — where to create it (default: the app's namespace)
+  labels             map    — extra labels (e.g. release: <kps-release> for a strict install)
+  selectorLabels     map    — REQUIRED — labels of the Service(s) to scrape
+  namespaceSelector  list   — namespaces to look in (default: same namespace)
+  port               string — REQUIRED — the NAMED port on the Service (not a number)
+  path               string — default /metrics
+  scheme             string — default http
+  interval           string — default 30s
+  scrapeTimeout      string — optional (must be < interval)
+  honorLabels        bool   — default false
+  relabelings        list   — optional, pass-through
+  metricRelabelings  list   — optional, pass-through
+*/ -}}
+{{- if .Values.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Values.serviceMonitor.name | default .Chart.Name }}
+  {{- with .Values.serviceMonitor.namespace }}
+  namespace: {{ . }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: {{ .Chart.Name }}
+    app.kubernetes.io/managed-by: argocd-gitops-plugin
+    {{- with .Values.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- toYaml (required "serviceMonitor.selectorLabels is required" .Values.serviceMonitor.selectorLabels) | nindent 6 }}
+  {{- with .Values.serviceMonitor.namespaceSelector }}
+  namespaceSelector:
+    matchNames:
+      {{- toYaml . | nindent 6 }}
+  {{- end }}
+  endpoints:
+    - port: {{ required "serviceMonitor.port (a NAMED Service port) is required" .Values.serviceMonitor.port }}
+      path: {{ .Values.serviceMonitor.path | default "/metrics" }}
+      scheme: {{ .Values.serviceMonitor.scheme | default "http" }}
+      interval: {{ .Values.serviceMonitor.interval | default "30s" }}
+      {{- with .Values.serviceMonitor.scrapeTimeout }}
+      scrapeTimeout: {{ . }}
+      {{- end }}
+      {{- if .Values.serviceMonitor.honorLabels }}
+      honorLabels: true
+      {{- end }}
+      {{- with .Values.serviceMonitor.relabelings }}
+      relabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.serviceMonitor.metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
