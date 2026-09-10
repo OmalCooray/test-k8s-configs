@@ -16,6 +16,7 @@ _(Updated by `/argocd-add-chart`.)_
 | App | Upstream chart | Version | Repo |
 |-----|----------------|---------|------|
 | airflow | airflow | 1.22.0 | https://airflow.apache.org |
+| mysql | mysql | 3.1.4 | https://groundhog2k.github.io/helm-charts/ |
 
 ## Deployment matrix
 
