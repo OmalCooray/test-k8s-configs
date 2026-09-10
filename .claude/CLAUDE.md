@@ -23,3 +23,4 @@ _(Updated by `/argocd-deploy`.)_
 
 | App | local |
 |-----|----------------|
+| airflow | yes |
