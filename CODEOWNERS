@@ -1,0 +1,3 @@
+# Write access control for environment config.
+# Phase 1 has one environment; prod rules are added when a prod env is created.
+/environments/local/   @OmalCooray
