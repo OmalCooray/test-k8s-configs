@@ -56,6 +56,13 @@ kube-prometheus-stack:
         maxUnavailable: 1
 
   grafana:
+    # Let the dashboard sidecar honor the `grafana_folder` ConfigMap annotation
+    # (apps ship their dashboards into a folder named after the app).
+    sidecar:
+      dashboards:
+        folderAnnotation: grafana_folder
+        provider:
+          foldersFromFilesStructure: true
     # Persistent storage for dashboards/state. HA Grafana (replicas: 2) needs an
     # external DB backend (e.g. the MySQL app) instead of this PVC — follow-up.
     replicas: 1
