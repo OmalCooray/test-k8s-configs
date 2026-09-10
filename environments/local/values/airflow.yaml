@@ -1,1 +1,15 @@
 # Per-environment overrides for airflow in local. Nest under the chart name.
+#
+# Argo CD compatibility: the Airflow chart ships its db-migration and create-user
+# jobs as Helm hooks. Argo CD does not run Helm's pre-install hooks the way Helm
+# does, so the jobs never fire and every component hangs on "Waiting for
+# migrations". Setting useHelmHooks=false turns them into ordinary resources that
+# the chart annotates with Argo CD sync-waves. This is the documented pattern
+# (Airflow chart docs → "Using with Argo CD").
+airflow:
+  createUserJob:
+    useHelmHooks: false
+    applyCustomEnv: false
+  migrateDatabaseJob:
+    useHelmHooks: false
+    applyCustomEnv: false
