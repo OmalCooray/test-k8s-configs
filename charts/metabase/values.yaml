@@ -6,13 +6,13 @@ metabase:
     type: mysql
     # Secret created out of band (plugin Phase 3 will manage this).
     existingSecret: metabase-db
-    # Full JDBC connection URI (key: connectionURI) — used instead of the
-    # host/port/user/pass parts. Carries sslMode=trust because MySQL 9 defaults
-    # to caching_sha2_password auth, which Metabase's MariaDB JDBC driver can
-    # only complete over TLS (otherwise: "RSA public key is not available").
+    # Full JDBC connection URI (key: connectionURI) is the ONLY DB config —
+    # username/password are inside it, so the chart's separate MB_DB_USER /
+    # MB_DB_PASS env vars are not set (they would override and confuse Metabase).
+    # The URI carries useSSL=true&trustServerCertificate=true: MySQL 9 defaults
+    # to caching_sha2_password auth, which Metabase's bundled MariaDB Connector/J
+    # 2.x can only complete over TLS (otherwise "RSA public key is not available").
     existingSecretConnectionURIKey: connectionURI
-    existingSecretUsernameKey: username
-    existingSecretPasswordKey: password
     # Stable key that encrypts data-source credentials Metabase stores in its DB.
     existingSecretEncryptionKeyKey: encryptionKey
 
