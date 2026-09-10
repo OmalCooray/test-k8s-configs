@@ -1450,7 +1450,10 @@
         "type": "datasource",
         "query": "prometheus",
         "label": "Datasource",
-        "current": {},
+        "current": {
+          "text": "default",
+          "value": "default"
+        },
         "hide": 0,
         "refresh": 1
       }
