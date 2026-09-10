@@ -1,0 +1,29 @@
+# Base overrides for the upstream "trino" chart (trino/trino).
+# Environment-agnostic. Per-env sizing/HA is in the overlay.
+trino:
+  server:
+    workers: 2
+    node:
+      environment: production
+
+  # Catalogs. The default tpch/tpcds stay (handy for smoke tests). Add a MySQL
+  # catalog pointing at the shared cluster MySQL so Trino can query real data.
+  # The password is injected from the trino-mysql Secret via ${ENV:...}; only the
+  # non-secret parts are in git. sslMode=REQUIRED because MySQL 9 defaults to
+  # caching_sha2_password auth (needs an encrypted channel).
+  catalogs:
+    tpch: |
+      connector.name=tpch
+      tpch.splits-per-node=4
+    mysql: |
+      connector.name=mysql
+      connection-url=jdbc:mysql://airflow-mysql.airflow.svc.cluster.local:3306?sslMode=REQUIRED
+      connection-user=trino
+      connection-password=${ENV:TRINO_MYSQL_PASSWORD}
+
+  # Inject the catalog password into every Trino pod from the Secret.
+  envFrom:
+    - secretRef:
+        name: trino-mysql
+
+  # Chart default already runs as uid 1000 (non-root); keep it.

@@ -19,6 +19,7 @@ _(Updated by `/argocd-add-chart`.)_
 | mysql | mysql | 3.1.4 | https://groundhog2k.github.io/helm-charts/ |
 | metabase | metabase | 2.27.6 | https://pmint93.github.io/helm-charts/ |
 | kube-prometheus-stack | kube-prometheus-stack | 90.0.0 | https://prometheus-community.github.io/helm-charts |
+| trino | trino | 1.42.2 | https://trinodb.github.io/charts |
 
 ## Deployment matrix
 
@@ -30,3 +31,4 @@ _(Updated by `/argocd-deploy`.)_
 | mysql | yes |
 | metabase | yes |
 | kube-prometheus-stack | yes |
+| trino | yes |

@@ -1,0 +1,22 @@
+{{- /*
+The trino chart has no PodDisruptionBudget option. Workers are a Deployment with
+>= 2 replicas in prod, so add a PDB here so a node drain can't take all workers
+(and every in-flight query) at once. The coordinator is a single point by design
+(one Trino coordinator) and gets no PDB.
+Only rendered when the wrapper sets trino.server.workers >= 2.
+*/ -}}
+{{- if ge (int (dig "server" "workers" 1 .Values.trino)) 2 }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: trino-worker
+  labels:
+    app.kubernetes.io/name: trino
+    app.kubernetes.io/component: worker
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: trino
+      app.kubernetes.io/component: worker
+{{- end }}
