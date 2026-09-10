@@ -59,7 +59,14 @@ kube-prometheus-stack:
     podDisruptionBudget:
       minAvailable: 1
 
+
   prometheus-node-exporter:
+    # Docker Desktop's VM does not expose / as a shared/slave mount, so
+    # node-exporter's host-rootfs bind mount fails to start
+    # ("path / is mounted on / but it is not a shared or slave mount").
+    # Disable that mount here — a real cluster node keeps it enabled.
+    hostRootFsMount:
+      enabled: false
     resources:
       requests: {cpu: 50m, memory: 64Mi}
       limits: {cpu: 200m, memory: 128Mi}
