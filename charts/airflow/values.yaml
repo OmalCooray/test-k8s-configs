@@ -1,12 +1,15 @@
 # Overrides for the upstream chart "airflow".
-# Everything nests under the dependency name so Helm routes it to the subchart.
-# Pull the upstream defaults with:
-#   helm show values airflow --repo https://airflow.apache.org --version 1.22.0
-# then copy ONLY the keys you are changing under the block below.
-#
-# Starts as an empty map ({}) so Helm has a valid (no-op) value for the subchart.
-# Replace {} with a real mapping when you add overrides, e.g.:
-#   airflow:
-#     image:
-#       tag: "1.22.0"
+# The airflow chart derives resource names from the Helm release name; Argo CD
+# sets that to the Application name ("airflow"), so components are already
+# airflow-<component> and the ServiceMonitor below can target airflow-statsd.
 airflow: {}
+
+# ServiceMonitor for the statsd-exporter sidecar (Prometheus format on :9102).
+serviceMonitor:
+  enabled: true
+  selectorLabels:
+    component: statsd
+    release: airflow
+  port: statsd-scrape
+  path: /metrics
+  interval: 30s
