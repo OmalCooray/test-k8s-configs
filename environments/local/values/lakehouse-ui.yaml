@@ -1,9 +1,4 @@
 # Per-environment overrides for lakehouse-ui in local.
-# Pinned to the sha tag published by Task 6's CI (never :latest in-cluster).
-#
-# NOTE: this app will show CrashLoopBackOff/Degraded until the
-# lakehouse-ui-polaris-credentials Secret is created out-of-band via
-# bootstrap/polaris-setup.sh (a later manual step, not yet written as of
-# this commit). That is expected, not a regression.
+# Pinned to the sha tag published by lakehouse-ui's CI (never :latest in-cluster).
 image:
-  tag: "sha-f0d9b85"
+  tag: "sha-d23d8d7"
