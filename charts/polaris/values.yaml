@@ -31,3 +31,15 @@ polaris:
     # script hardcodes this realm name.
     realms:
       - POLARIS
+
+  # MinIO isn't a real AWS STS provider, so Polaris can't assume a role to
+  # vend temporary credentials to clients — it needs a static credential of
+  # its own to hand back for ACCESS_DELEGATION_MODE 'vended_credentials'.
+  # Secret created out of band (not in git): polaris-storage-credentials,
+  # keys awsAccessKeyId/awsSecretAccessKey (same MinIO root creds as
+  # minio-credentials).
+  storage:
+    secret:
+      name: polaris-storage-credentials
+      awsAccessKeyId: awsAccessKeyId
+      awsSecretAccessKey: awsSecretAccessKey
