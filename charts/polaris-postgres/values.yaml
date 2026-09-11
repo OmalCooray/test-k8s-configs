@@ -1,0 +1,43 @@
+# Base overrides for the upstream "postgres" chart (groundhog2k/postgres).
+# Dedicated, single-purpose Postgres for Apache Polaris's relational-jdbc
+# metastore — not shared with the mysql app. Polaris's relational-jdbc
+# backend supports Postgres and H2 only, not MySQL.
+postgres:
+  fullnameOverride: polaris-postgres
+
+  settings:
+    # Secret with POSTGRES_PASSWORD (created out of band, not in git). The
+    # same Secret also carries username/password/jdbcUrl keys consumed by
+    # charts/polaris/values.yaml's relationalJdbc config — see Task 10.
+    existingSecret: polaris-postgres
+    superuserPassword:
+      secretKey: POSTGRES_PASSWORD
+    # settings.superuser is left unset deliberately: the chart only injects
+    # a POSTGRES_USER env var into the container when superuser.secretKey
+    # (or .value) is explicitly set. Leaving it unset is fine because the
+    # upstream postgres docker image defaults POSTGRES_USER to "postgres"
+    # and exports it before running /docker-entrypoint-initdb.d scripts —
+    # the chart's own bundled 01-init-userdb.sh relies on this same
+    # default, and our customScripts script below does too.
+
+  # Polaris connects to a dedicated "polaris" database (not the default
+  # "postgres" one), created on first boot. Verified against the chart's
+  # own docker-entrypoint-initdb.d convention (see 01-init-userdb.sh in
+  # templates/scripts.yaml) — $POSTGRES_USER is exported by the base
+  # postgres image before custom init scripts run.
+  customScripts:
+    01-create-polaris-db.sh: |
+      set -e
+      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
+        CREATE DATABASE polaris;
+      EOSQL
+
+  # Identical to upstream's own default (5432) — kept as an explicit pin
+  # (not a deviation) because the JDBC URL in Task 10/13
+  # (jdbc:postgresql://polaris-postgres:5432/polaris) references it by
+  # name and port.
+  service:
+    port: 5432
+
+  # groundhog2k/postgres ships a hardened securityContext by default
+  # (runAsNonRoot, readOnlyRootFilesystem, drop ALL, fsGroup 999) — keep it.
