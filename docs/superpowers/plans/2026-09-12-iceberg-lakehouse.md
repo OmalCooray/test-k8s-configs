@@ -1060,15 +1060,28 @@ dependencies:
 ```
 
 `charts/polaris/values.yaml`:
+
+**Note (updated after Task 9's review):** `charts/polaris-postgres` was
+revised to create a dedicated non-superuser database user via the upstream
+chart's `userDatabase` field (not the superuser) — matching how
+`charts/mysql/values.yaml` does this for Airflow. The `polaris-postgres`
+Secret's actual keys are: `POSTGRES_PASSWORD` (superuser, unused here),
+`POSTGRES_DB` (= `polaris`), `POSTGRES_USER_NAME` (the dedicated user),
+`POSTGRES_USER_PASSWORD` (its password). Point `relationalJdbc.secret`'s
+`username`/`password` fields at those same key names — do NOT invent new
+`username`/`password` keys with duplicated values. Only `jdbcUrl` needs a
+distinct, manually-set key (not derivable from any single existing key).
+
 ```yaml
 # Base overrides for the upstream "polaris" chart (Apache Polaris).
 #
-# Persistence: relational-jdbc against polaris-postgres (see charts/polaris-postgres).
-# Reuses the same out-of-band Secret ("polaris-postgres") that chart uses for
-# POSTGRES_PASSWORD — it also carries username/password/jdbcUrl keys:
-#   username = postgres
-#   password = <same value as POSTGRES_PASSWORD>
-#   jdbcUrl  = jdbc:postgresql://polaris-postgres:5432/polaris
+# Persistence: relational-jdbc against polaris-postgres (see
+# charts/polaris-postgres). Reuses the SAME out-of-band Secret
+# ("polaris-postgres") that chart's userDatabase config uses — Polaris
+# connects as the dedicated "polaris" user (POSTGRES_USER_NAME /
+# POSTGRES_USER_PASSWORD keys), not the Postgres superuser. jdbcUrl is a
+# separate manually-set key (not derivable from the others):
+#   jdbcUrl = jdbc:postgresql://polaris-postgres:5432/polaris
 #
 # Realm bootstrap (creating realm POLARIS + a root principal) is NOT part of
 # this chart — see bootstrap/polaris-setup.sh (Task 13), run once after this
@@ -1079,8 +1092,8 @@ polaris:
     relationalJdbc:
       secret:
         name: polaris-postgres
-        username: username
-        password: password
+        username: POSTGRES_USER_NAME
+        password: POSTGRES_USER_PASSWORD
         jdbcUrl: jdbcUrl
 
   realmContext:
@@ -1490,14 +1503,19 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 echo ">> Bootstrapping Polaris in namespace '$NS'. Ctrl-C now if that's wrong."
 sleep 3
 
-PG_PASSWORD=$(kubectl get secret polaris-postgres -n "$NS" -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d)
+# polaris-postgres (Task 9, revised) creates a dedicated "polaris" DB user
+# via the chart's userDatabase field, not the superuser — bootstrap connects
+# as that same user (matches what charts/polaris/values.yaml's
+# relationalJdbc config uses, so both agree on who owns the schema).
+PG_USER=$(kubectl get secret polaris-postgres -n "$NS" -o jsonpath='{.data.POSTGRES_USER_NAME}' | base64 -d)
+PG_PASSWORD=$(kubectl get secret polaris-postgres -n "$NS" -o jsonpath='{.data.POSTGRES_USER_PASSWORD}' | base64 -d)
 ROOT_CLIENT_SECRET=$(openssl rand -hex 20)
 
 echo ">> Bootstrapping realm POLARIS (root principal: $ROOT_CLIENT_ID)"
 kubectl run polaris-bootstrap --rm -it --restart=Never -n "$NS" \
   --image=apache/polaris-admin-tool:1.7.0 \
   --env="POLARIS_PERSISTENCE_TYPE=relational-jdbc" \
-  --env="QUARKUS_DATASOURCE_USERNAME=postgres" \
+  --env="QUARKUS_DATASOURCE_USERNAME=${PG_USER}" \
   --env="QUARKUS_DATASOURCE_PASSWORD=${PG_PASSWORD}" \
   --env="QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://polaris-postgres:5432/polaris" \
   -- bootstrap -r POLARIS -c "POLARIS,${ROOT_CLIENT_ID},${ROOT_CLIENT_SECRET}"

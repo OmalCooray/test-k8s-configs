@@ -1,0 +1,10 @@
+apiVersion: v2
+name: polaris-postgres
+description: Wrapper chart for postgres (postgres 1.6.8) — Apache Polaris's relational-jdbc metastore
+type: application
+version: 0.1.0
+appVersion: "1.6.8"
+dependencies:
+  - name: postgres
+    version: 1.6.8
+    repository: https://groundhog2k.github.io/helm-charts/
