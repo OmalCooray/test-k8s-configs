@@ -1,4 +1,5 @@
 # Base overrides for the upstream "postgres" chart (groundhog2k/postgres).
+# Environment-agnostic settings live here; per-env sizing is in the overlay.
 # Dedicated, single-purpose Postgres for Apache Polaris's relational-jdbc
 # metastore — not shared with the mysql app. Polaris's relational-jdbc
 # backend supports Postgres and H2 only, not MySQL.
@@ -7,30 +8,49 @@ postgres:
 
   settings:
     # Secret with POSTGRES_PASSWORD (created out of band, not in git). The
-    # same Secret also carries username/password/jdbcUrl keys consumed by
-    # charts/polaris/values.yaml's relationalJdbc config — see Task 10.
+    # same Secret also carries the userDatabase keys below, plus
+    # jdbcUrl for charts/polaris/values.yaml's relationalJdbc config —
+    # see the Task 10 note below.
     existingSecret: polaris-postgres
     superuserPassword:
       secretKey: POSTGRES_PASSWORD
-    # settings.superuser is left unset deliberately: the chart only injects
-    # a POSTGRES_USER env var into the container when superuser.secretKey
-    # (or .value) is explicitly set. Leaving it unset is fine because the
-    # upstream postgres docker image defaults POSTGRES_USER to "postgres"
-    # and exports it before running /docker-entrypoint-initdb.d scripts —
-    # the chart's own bundled 01-init-userdb.sh relies on this same
-    # default, and our customScripts script below does too.
+    # Left unset deliberately: the upstream image defaults POSTGRES_USER to
+    # "postgres" when no superuser.secretKey/.value is given. Fine here
+    # since Polaris connects as the dedicated user below, not the superuser.
 
-  # Polaris connects to a dedicated "polaris" database (not the default
-  # "postgres" one), created on first boot. Verified against the chart's
-  # own docker-entrypoint-initdb.d convention (see 01-init-userdb.sh in
-  # templates/scripts.yaml) — $POSTGRES_USER is exported by the base
-  # postgres image before custom init scripts run.
-  customScripts:
-    01-create-polaris-db.sh: |
-      set -e
-      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
-        CREATE DATABASE polaris;
-      EOSQL
+  # Creates the `polaris` database and a dedicated non-superuser `polaris`
+  # user on first boot, from the same Secret above (instead of a superuser-
+  # only customScripts CREATE DATABASE). /docker-entrypoint-initdb.d scripts
+  # — how the chart implements userDatabase under the hood, see
+  # 01-init-userdb.sh in templates/scripts.yaml — run exactly once, only
+  # against an empty PGDATA, so this is safe across restarts as long as
+  # PGDATA is backed by persistent storage (the not-yet-created
+  # environments/local/values/polaris-postgres.yaml overlay's job).
+  userDatabase:
+    existingSecret: polaris-postgres
+    name:
+      secretKey: POSTGRES_DB
+    user:
+      secretKey: POSTGRES_USER_NAME
+    password:
+      secretKey: POSTGRES_USER_PASSWORD
+
+  # ---------------------------------------------------------------------
+  # NOTE for Task 10 (charts/polaris, not yet written): Apache Polaris's
+  # relationalJdbc.secret.{username,password} config lets you point at
+  # arbitrary key names in an existing secret. Point those at THIS SAME
+  # polaris-postgres Secret's POSTGRES_USER_NAME / POSTGRES_USER_PASSWORD
+  # keys (the dedicated "polaris" user created above) — do NOT invent
+  # separate username/password keys that would just duplicate the same
+  # values under different names. (Deliberately not named plain
+  # POSTGRES_USER: that name already means "the superuser" by Postgres
+  # image convention, and reusing it for a non-superuser user is exactly
+  # the kind of ambiguity this chart is trying to get away from.)
+  # Only relationalJdbc.secret.jdbcUrl needs a distinct, manually-set key
+  # in this Secret (e.g. `jdbcUrl`, value
+  # `jdbc:postgresql://polaris-postgres:5432/polaris`), since it isn't
+  # derivable from any single existing key.
+  # ---------------------------------------------------------------------
 
   # Identical to upstream's own default (5432) — kept as an explicit pin
   # (not a deviation) because the JDBC URL in Task 10/13
