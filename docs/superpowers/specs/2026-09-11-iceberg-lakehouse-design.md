@@ -49,7 +49,7 @@ repo for the custom UI:
 │  charts/polaris-postgres/ → Application: polaris-postgres      │
 │  charts/polaris/          → Application: polaris                │
 │  charts/lakehouse-ui/     → Application: lakehouse-ui           │
-│    (thin chart: Deployment + Service + Traefik IngressRoute,    │
+│    (thin chart: Deployment + ClusterIP Service,                 │
 │     image pulled from ghcr.io/omalcooray/lakehouse-ui)          │
 └─────────────────────────────────────────────────────────────┘
 
@@ -134,9 +134,11 @@ back, as the first end-to-end proof.
 - **Image:** built and pushed to `ghcr.io/omalcooray/lakehouse-ui` (public)
   by a GitHub Actions workflow on merge to the repo's main branch.
 - **Chart:** a thin hand-written chart in `test-k8s-configs/charts/lakehouse-ui/`
-  — Deployment (image tag pinned, not `:latest`), Service, and a Traefik
-  `IngressRoute` (reusing the ingress this cluster already runs — via the
-  plugin's existing extra-manifests support, not a new plugin capability).
+  — Deployment (image tag pinned, not `:latest`) and a `ClusterIP` Service.
+  No ingress: this cluster runs no ingress controller today (checked live —
+  no Traefik, no `IngressClass` at all), and every other UI here (Grafana,
+  Argo CD, Airflow, Metabase) is already reached via `kubectl port-forward`,
+  so `lakehouse-ui` matches that rather than introducing one.
   This chart is *not* produced by the plugin's chart-wrapping workflow, since
   there is no upstream chart to wrap — it's written by hand, the same way any
   hand-rolled Application would be, per the roadmap's "own-app charts are out
@@ -161,7 +163,7 @@ Read (repeatable, via UI):
   all Synced and Healthy.
 - The one-off data load completes; a fresh local DuckDB session, reattaching
   the catalog, returns the expected row count for `nyc_taxi.trips`.
-- `lakehouse-ui` is reachable via its IngressRoute; submitting
+- `lakehouse-ui` is reachable via `kubectl port-forward`; submitting
   `SELECT count(*) FROM nyc_taxi.trips` (and a couple of real aggregate
   queries) in the browser returns correct results.
 - Independent confirmation outside the DuckDB path: `mc ls` (or the S3 API)
