@@ -1,0 +1,17 @@
+replicas: 1
+
+image:
+  repository: ghcr.io/omalcooray/lakehouse-ui
+  tag: "latest"   # pinned to a real sha tag in environments/local/values/lakehouse-ui.yaml
+  pullPolicy: IfNotPresent
+
+polaris:
+  endpoint: http://polaris.lakehouse.svc.cluster.local:8181/api/catalog
+  catalog: lakehouse
+  # Secret with POLARIS_CLIENT_ID / POLARIS_CLIENT_SECRET (created out of
+  # band by bootstrap/polaris-setup.sh, not in git — see Task 13/15).
+  credentialsSecret: lakehouse-ui-polaris-credentials
+
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {cpu: 500m, memory: 512Mi}

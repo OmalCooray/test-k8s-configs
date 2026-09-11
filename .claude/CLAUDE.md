@@ -20,6 +20,10 @@ _(Updated by `/argocd-add-chart`.)_
 | metabase | metabase | 2.27.6 | https://pmint93.github.io/helm-charts/ |
 | kube-prometheus-stack | kube-prometheus-stack | 90.0.0 | https://prometheus-community.github.io/helm-charts |
 | trino | trino | 1.42.2 | https://trinodb.github.io/charts |
+| minio | minio | 5.4.0 | https://charts.min.io/ |
+| polaris-postgres | postgres | 1.6.8 | https://groundhog2k.github.io/helm-charts/ |
+| polaris | polaris | 1.7.0 | https://downloads.apache.org/polaris/helm-chart |
+| lakehouse-ui | (own app) | — | — |
 
 ## Deployment matrix
 
@@ -32,3 +36,7 @@ _(Updated by `/argocd-deploy`.)_
 | metabase | yes |
 | kube-prometheus-stack | yes |
 | trino | yes |
+| minio | yes |
+| polaris-postgres | yes |
+| polaris | yes |
+| lakehouse-ui | yes |

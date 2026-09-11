@@ -1,0 +1,10 @@
+apiVersion: v2
+name: polaris
+description: Wrapper chart for polaris (polaris 1.7.0) — Iceberg REST catalog
+type: application
+version: 0.1.0
+appVersion: "1.7.0"
+dependencies:
+  - name: polaris
+    version: 1.7.0
+    repository: https://downloads.apache.org/polaris/helm-chart

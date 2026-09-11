@@ -1,0 +1,8 @@
+# Per-environment overrides for minio in local.
+minio:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  persistence:
+    size: 10Gi
+    storageClass: hostpath

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: minio
+description: Wrapper chart for minio (minio 5.4.0)
+type: application
+version: 0.1.0
+appVersion: "5.4.0"
+dependencies:
+  - name: minio
+    version: 5.4.0
+    repository: https://charts.min.io/
