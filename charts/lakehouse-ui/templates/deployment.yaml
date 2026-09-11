@@ -61,3 +61,17 @@ spec:
             initialDelaySeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            # readOnlyRootFilesystem is true, but DuckDB needs somewhere to
+            # write extension config/cache (~/.duckdb) and spill/temp files
+            # for larger queries (/tmp) — found live: the /healthz-only smoke
+            # test during hardening never exercised an actual DuckDB query.
+            - name: duckdb-home
+              mountPath: /home/appuser/.duckdb
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: duckdb-home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
