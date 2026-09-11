@@ -174,6 +174,47 @@ Read (repeatable, via UI):
   a merge to main, and that tag is what's actually deployed (no `:latest` in
   the cluster).
 
+## Verification results (2026-09-12)
+
+All Definition of Done items above are met. Notes from actually running it:
+
+- **`ACCESS_DELEGATION_MODE 'vended_credentials'` works** — but only once
+  Polaris itself was given a static MinIO credential to hand out. MinIO
+  isn't a real AWS STS provider, so the first attempt failed with
+  `SdkClientException: Unable to load credentials from any of the providers
+  in the chain`. Fixed by setting the polaris chart's `storage.secret`
+  (`awsAccessKeyId`/`awsSecretAccessKey`, out-of-band Secret
+  `polaris-storage-credentials`, the same MinIO root creds as
+  `minio-credentials`) — see `charts/polaris/values.yaml`. After that,
+  vended credentials worked end-to-end with no static keys anywhere in
+  DuckDB or `lakehouse-ui`, as originally designed.
+- **The one-off load ran as an in-cluster Job, not local DuckDB.** The
+  design assumed port-forwarding both Polaris and MinIO to a local DuckDB
+  session — that mostly works (catalog metadata calls go fine over the
+  Polaris port-forward), but the vended credentials response points DuckDB
+  at Polaris's *configured* storage endpoint (`http://minio:9000`, the
+  in-cluster DNS name) for the actual S3 read/write, which a local process
+  can't resolve. Loading from a scratch `kubectl run`/Job pod inside the
+  `lakehouse` namespace (where `minio`/`polaris` resolve normally) avoided
+  the mismatch entirely. Local DuckDB sessions work fine for *querying*
+  through `lakehouse-ui` (the FastAPI backend runs in-cluster too, for the
+  same reason) — the port-forward approach only breaks for a client
+  actually writing new data from outside the cluster.
+- **Two bugs surfaced only under real use, both fixed:**
+  1. `app/catalog.py`'s `CREATE SECRET` needed an `ENDPOINT` field, not just
+     `ATTACH` — the DuckDB version in use rejects an iceberg secret with no
+     endpoint/oauth2_server_uri. Fixed in
+     [OmalCooray/lakehouse-ui@d23d8d7](https://github.com/OmalCooray/lakehouse-ui/commit/d23d8d7).
+  2. `lakehouse-ui`'s `readOnlyRootFilesystem: true` (added during Task 11's
+     hardening review) blocked DuckDB from writing `~/.duckdb` — the
+     hardening's own smoke test only checked `/healthz`, which never
+     touches DuckDB, so this passed review but broke on the first real
+     query. Fixed with two `emptyDir` mounts
+     (`charts/lakehouse-ui/templates/deployment.yaml`).
+- Queries against the catalog need the `lakehouse.` prefix
+  (`lakehouse.nyc_taxi.trips`, not `nyc_taxi.trips`) — `ATTACH` doesn't make
+  a catalog DuckDB's default. Fixed the UI's placeholder text to match.
+
 ## Explicitly out of scope for this pass
 
 - Distributed/multi-node MinIO — single node is enough for a local cluster.
