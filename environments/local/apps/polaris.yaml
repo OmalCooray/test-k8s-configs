@@ -21,6 +21,9 @@ spec:
       ref: values
   destination:
     server: https://kubernetes.default.svc
+    # Shared namespace for this whole subsystem (not one-app-per-namespace) —
+    # these 4 apps are one cohesive feature, not independent consumers.
+    # See docs/superpowers/specs/2026-09-11-iceberg-lakehouse-design.md Section 1.
     namespace: lakehouse
   syncPolicy:
     automated:

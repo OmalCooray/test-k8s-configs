@@ -3,6 +3,10 @@ kind: Application
 metadata:
   name: lakehouse-ui
   namespace: argocd
+  # NOTE: this app will show CrashLoopBackOff/Degraded until the
+  # lakehouse-ui-polaris-credentials Secret is created out-of-band via
+  # bootstrap/polaris-setup.sh (a later manual step, not yet written as of
+  # this commit). That is expected, not a regression.
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
@@ -19,6 +23,9 @@ spec:
       ref: values
   destination:
     server: https://kubernetes.default.svc
+    # Shared namespace for this whole subsystem (not one-app-per-namespace) —
+    # these 4 apps are one cohesive feature, not independent consumers.
+    # See docs/superpowers/specs/2026-09-11-iceberg-lakehouse-design.md Section 1.
     namespace: lakehouse
   syncPolicy:
     automated:
