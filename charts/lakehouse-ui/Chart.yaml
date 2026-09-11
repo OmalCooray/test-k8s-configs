@@ -1,0 +1,6 @@
+apiVersion: v2
+name: lakehouse-ui
+description: Deployment for the custom lakehouse-ui query app (own image, not an upstream chart)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
