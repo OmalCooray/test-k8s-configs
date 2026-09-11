@@ -1,0 +1,26 @@
+# Base overrides for the upstream "polaris" chart (Apache Polaris).
+#
+# Persistence: relational-jdbc against polaris-postgres (see
+# charts/polaris-postgres). Reuses the SAME out-of-band Secret
+# ("polaris-postgres") that chart's userDatabase config uses — Polaris
+# connects as the dedicated "polaris" user (POSTGRES_USER_NAME /
+# POSTGRES_USER_PASSWORD keys), not the Postgres superuser. jdbcUrl is a
+# separate manually-set key (not derivable from the others):
+#   jdbcUrl = jdbc:postgresql://polaris-postgres:5432/polaris
+#
+# Realm bootstrap (creating realm POLARIS + a root principal) is NOT part of
+# this chart — see bootstrap/polaris-setup.sh (Task 13), run once after this
+# app is Synced/Healthy.
+polaris:
+  persistence:
+    type: relational-jdbc
+    relationalJdbc:
+      secret:
+        name: polaris-postgres
+        username: POSTGRES_USER_NAME
+        password: POSTGRES_USER_PASSWORD
+        jdbcUrl: jdbcUrl
+
+  realmContext:
+    realms:
+      - POLARIS
