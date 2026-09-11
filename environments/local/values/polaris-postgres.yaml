@@ -1,0 +1,8 @@
+# Per-environment overrides for polaris-postgres in local.
+postgres:
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  storage:
+    requestedSize: 5Gi
+    className: hostpath
