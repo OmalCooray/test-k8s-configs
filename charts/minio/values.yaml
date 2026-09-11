@@ -2,17 +2,24 @@
 # Environment-agnostic settings live here; per-env sizing is in the overlay.
 minio:
   fullnameOverride: minio
+  # standalone — single-node local dev cluster, no need for distributed HA
+  # (upstream chart default is `mode: distributed`).
   mode: standalone
 
   # Secret with rootUser / rootPassword (created out of band, not in git).
   existingSecret: minio-credentials
 
-  # One bucket for every Iceberg table's data + metadata files.
+  # One bucket for every Iceberg table's data + metadata files. Private
+  # (policy: none) — accessed only via S3 credentials from
+  # minio-credentials, not anonymous HTTP.
   buckets:
     - name: lakehouse
       policy: none
       purge: false
 
+  # Identical to upstream's own defaults — kept as an explicit pin (not a
+  # deviation) because Task 13's Polaris catalog setup references
+  # minio:9000 by name/port.
   service:
     type: ClusterIP
     port: "9000"
