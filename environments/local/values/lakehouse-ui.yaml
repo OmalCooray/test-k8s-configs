@@ -1,0 +1,5 @@
+# Per-environment overrides for lakehouse-ui in local.
+# Pinned to a real image tag once Task 6's CI has published one — replace
+# "latest" with the ghcr.io sha tag before merging (never :latest in-cluster).
+image:
+  tag: "sha-f0d9b85"
