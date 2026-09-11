@@ -1,0 +1,51 @@
+# Applied by `polaris setup apply` (see polaris-setup.sh). Create-only — safe
+# to re-run; existing entities are left alone.
+#
+# The S3/MinIO storage block's field names (endpoint/region/path_style_access)
+# are inferred from the `polaris catalogs create --storage-type s3 --endpoint
+# ... --region ...` CLI flags, not independently confirmed for the `setup
+# apply` YAML schema specifically — run `polaris setup apply --dry-run` first
+# (Task 15, Step 3); if it reports an unknown field, run
+# `polaris catalogs create --help` and rename the key here to match.
+principals:
+  loader:
+    roles:
+      - loader_role
+  lakehouse-ui:
+    roles:
+      - lakehouse_ui_role
+
+principal_roles:
+  - loader_role
+  - lakehouse_ui_role
+
+catalogs:
+  - name: "lakehouse"
+    storage_type: "s3"
+    default_base_location: "s3://lakehouse/"
+    allowed_locations:
+      - "s3://lakehouse/"
+    endpoint: "http://minio:9000"
+    region: "us-east-1"
+    path_style_access: true
+    roles:
+      loader_catalog_role:
+        assign_to:
+          - loader_role
+        privileges:
+          catalog:
+            # Broad on purpose — this principal is used only for the one-off
+            # local data load (Task 16), never by lakehouse-ui.
+            - CATALOG_MANAGE_CONTENT
+      lakehouse_ui_catalog_role:
+        assign_to:
+          - lakehouse_ui_role
+        privileges:
+          catalog:
+            # Read-only — confirm these are the exact privilege enum names
+            # via `polaris privileges catalog --help` (Task 15, Step 3); if
+            # not, use the closest read-only equivalents it lists.
+            - TABLE_READ_DATA
+            - NAMESPACE_LIST
+    namespaces:
+      - nyc_taxi
