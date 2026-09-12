@@ -35,6 +35,42 @@ postgres:
     password:
       secretKey: POSTGRES_USER_PASSWORD
 
+  # Second database on this same Postgres instance, for lakehouse-ui's
+  # query history — NOT via userDatabase (that field only creates one
+  # database; groundhog2k/postgres has no list form for it), so this uses
+  # the same customScripts mechanism Task 9 (of the original lakehouse
+  # plan) moved AWAY from for the *first* database, for the same reason
+  # that doesn't apply here: userDatabase already owns the "one extra
+  # database" slot. /docker-entrypoint-initdb.d scripts run once, only
+  # against an empty PGDATA — same restart-safety property as
+  # userDatabase's own script (see the note on it above).
+  customScripts:
+    02-create-lakehouse-ui-db.sh: |
+      set -e
+      psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" <<-EOSQL
+        CREATE DATABASE "$LAKEHOUSE_UI_DB";
+        CREATE USER "$LAKEHOUSE_UI_USER_NAME" WITH PASSWORD '$LAKEHOUSE_UI_USER_PASSWORD';
+        GRANT ALL PRIVILEGES ON DATABASE "$LAKEHOUSE_UI_DB" TO "$LAKEHOUSE_UI_USER_NAME";
+        ALTER DATABASE "$LAKEHOUSE_UI_DB" OWNER TO "$LAKEHOUSE_UI_USER_NAME";
+      EOSQL
+
+  # $LAKEHOUSE_UI_DB / $LAKEHOUSE_UI_USER_NAME / $LAKEHOUSE_UI_USER_PASSWORD
+  # above are plain shell variable expansion (deliberately NOT escaped —
+  # an earlier draft of this task mistakenly wrote `\$LAKEHOUSE_UI_DB`,
+  # which would have produced the literal text "LAKEHOUSE_UI_DB" in the
+  # SQL instead of its value; fixed before this was ever run). They need
+  # to actually be in the container's environment for that expansion to
+  # work — confirmed via the real chart source
+  # (groundhog2k/postgres 1.6.8, templates/statefulset.yaml line ~170):
+  # `extraEnvSecrets` is a list of existing Secret names, each rendered as
+  # a plain `envFrom: [{secretRef: {name: ...}}]`. every key in that
+  # Secret becomes a container env var under its own name. Since
+  # `LAKEHOUSE_UI_DB`/`LAKEHOUSE_UI_USER_NAME`/`LAKEHOUSE_UI_USER_PASSWORD`
+  # are (Task 18) added as keys on this SAME `polaris-postgres` Secret,
+  # pointing extraEnvSecrets at it is enough — no per-key wiring needed:
+  extraEnvSecrets:
+    - polaris-postgres
+
   # ---------------------------------------------------------------------
   # NOTE for Task 10 (charts/polaris, not yet written): Apache Polaris's
   # relationalJdbc.secret.{username,password} config lets you point at
