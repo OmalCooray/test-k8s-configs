@@ -304,3 +304,77 @@ returns `{"roles":[{"name":"loader_role",...}]}` — the shape `/me` needs.
   catalog tree shows schema on click, but not sample rows.
 - Multi-replica session sharing (session store stays in-memory,
   `replicas: 1`, same as today).
+
+## Verification results (2026-09-12, live against the real cluster)
+
+All Definition of Done items above were verified live, end to end,
+through the actual deployed UI — not just via `pytest`. Three real bugs
+surfaced during this pass that no earlier unit test or code review had
+caught, because none of them exercised a real request against the real
+Polaris/DuckDB/Postgres stack from inside the actual container:
+
+1. **`/me` 404'd, then 502'd.** `get_principal_roles`'s Management API
+   call was missing the `/v1` path prefix every other Catalog/Management
+   path in the client has (`/principals/{name}/principal-roles` instead
+   of `/v1/principals/{name}/principal-roles`) — confirmed live: Polaris
+   1.7.0 returns a 404 for the un-prefixed path. Fixed in
+   `lakehouse-ui@4e7169e`.
+2. **`/me` still 502'd after that fix.** `get_principal_roles` only ever
+   received `management_endpoint` and used it as the base for both the
+   OAuth token exchange *and* the roles lookup — but Polaris has no
+   `/v1/oauth/tokens` under the Management API base path, only under the
+   Catalog API base path (confirmed live: a 404 on the management base).
+   The function now takes `catalog_endpoint` (token) and
+   `management_endpoint` (roles lookup) as separate parameters; `/me`
+   passes `POLARIS_ENDPOINT` and `POLARIS_MANAGEMENT_ENDPOINT`
+   accordingly. Fixed in `lakehouse-ui@5a49316`, with regression tests
+   pinning the token request to the catalog endpoint specifically.
+3. **The first real write query failed**: `CREATE TABLE ... AS SELECT`
+   returned `IO Error: Failed to create directory "data": Read-only file
+   system`. DuckDB's Iceberg extension creates a CWD-relative `data`
+   directory as part of a write, and the image's `WORKDIR` (`/app`) sits
+   on the container's read-only root filesystem. Fixed in
+   `charts/lakehouse-ui` (test-k8s-configs): `workingDir: /tmp` (already
+   a writable `emptyDir` mount, added during the original hardening pass
+   for DuckDB's extension/temp-file needs) plus `PYTHONPATH=/app` so
+   `app.main` stays importable without `/app` as the process's CWD.
+   Reproduced and confirmed fixed directly inside the running pod before
+   committing.
+
+None of these were caught earlier because: the `/me` route's tests mock
+`get_principal_roles` entirely (by design — it's a thin REST client, not
+business logic to re-test at that layer), and `test_polaris_client.py`'s
+fake HTTP server matched requests by URL *substring*, which is exactly
+why a missing path segment or a token request hitting the wrong base URL
+could both pass silently. All three are now covered by tests that assert
+the literal expected URL, not just "some request happened."
+
+With all three live-discovered bugs fixed, every Definition of Done item
+was reverified against the real cluster:
+
+- ✅ `loader` (write grants): `CREATE TABLE lakehouse.nyc_taxi.test_x AS
+  SELECT 1` succeeds (result: `Count = 1`).
+- ✅ `lakehouse-ui` principal (no write grants): the same shape of query
+  fails with a Polaris 403 (`not authorized for op
+  CREATE_TABLE_STAGED_WITH_WRITE_DELEGATION`), surfaced as a query error
+  in the UI — no crash, no 500.
+- ✅ Sidebar catalog tree for `nyc_taxi` (`dim_payment_type`,
+  `mart_daily_summary`, `fct_trips`, `dim_rate_code`, `dim_vendor`,
+  `trips`) matches a direct Iceberg Catalog API `tables` listing exactly.
+- ✅ Query history (7 entries logged in while testing as `loader`)
+  survived a full `kubectl rollout restart deployment/lakehouse-ui` —
+  confirmed it's really in Postgres, not in-memory.
+- ✅ Per-principal isolation: after the restart, `loader`'s `/history`
+  shows all 7 of its own entries; `lakehouse-ui`'s principal's `/history`
+  shows only its own single (403'd) attempt — no cross-principal leakage
+  either direction.
+- ✅ Editor shows visible SQL syntax highlighting (CodeMirror SQL mode);
+  Ctrl+Enter runs the active worksheet's query.
+- ✅ `helm lint`/`helm template` clean for both `charts/lakehouse-ui` and
+  `charts/polaris-postgres` on the final merged `master`.
+- ✅ `kubectl get deployment lakehouse-ui -n lakehouse -o yaml | grep -i
+  POLARIS_CLIENT_ID` returns nothing.
+- No `.claude/CLAUDE.md` update needed — `lakehouse-ui` was already
+  listed in both the catalog inventory and deployment matrix tables from
+  the original lakehouse build; this pass changed an existing
+  Application, it didn't add one.
