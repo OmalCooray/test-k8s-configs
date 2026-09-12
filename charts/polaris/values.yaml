@@ -43,3 +43,11 @@ polaris:
       name: polaris-storage-credentials
       awsAccessKeyId: awsAccessKeyId
       awsSecretAccessKey: awsSecretAccessKey
+
+  # CORS for the (unofficial, dev-only) Polaris Console SPA — it calls this
+  # REST API directly from the browser (Vite dev server on localhost:5173),
+  # which the default Quarkus config rejects as a preflight failure. Origin
+  # is scoped to that one local dev server, not a wildcard.
+  advancedConfig:
+    quarkus.http.cors: "true"
+    quarkus.http.cors.origins: "http://localhost:5173"
