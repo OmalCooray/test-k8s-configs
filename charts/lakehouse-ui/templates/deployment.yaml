@@ -35,10 +35,22 @@ spec:
             capabilities:
               drop:
                 - ALL
+          # DuckDB's Iceberg extension creates a "data" directory relative
+          # to the process's CWD as part of a write (CREATE TABLE/INSERT)
+          # — found live: a real write query 400'd with "Failed to create
+          # directory \"data\": Read-only file system", since the image's
+          # WORKDIR (/app) is on the read-only root filesystem. Running
+          # from /tmp (already a writable emptyDir, see volumeMounts
+          # below) fixes it; PYTHONPATH=/app keeps `app.main` importable
+          # since it's no longer the CWD Python would otherwise resolve
+          # the package from.
+          workingDir: /tmp
           ports:
             - name: http
               containerPort: 8000
           env:
+            - name: PYTHONPATH
+              value: /app
             - name: POLARIS_ENDPOINT
               value: {{ .Values.polaris.endpoint | quote }}
             - name: POLARIS_MANAGEMENT_ENDPOINT
