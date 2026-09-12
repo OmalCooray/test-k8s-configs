@@ -49,13 +49,15 @@ Two things converge to justify identity as the foundation of this pass:
 ┌────────────────────────────────────────────────────────────────┐
 │ lakehouse-ui (FastAPI)                                           │
 │  Session store: in-memory dict, session_id → {client_id,         │
-│    client_secret, principal_name, principal_roles}               │
+│    client_secret, principal_name, created_at}                    │
+│  Own service credential (env, not per-session): POLARIS_ROOT_*   │
 │                                                                    │
 │  POST /login     → exchange creds at Polaris's OAuth endpoint,     │
-│                     decode the returned token's claims, create     │
-│                     session, set cookie                            │
+│                     decode sub from the token, create session,     │
+│                     set cookie                                      │
 │  POST /logout    → drop session                                    │
-│  GET  /me        → current principal + roles (from session)        │
+│  GET  /me        → principal from session + roles looked up fresh  │
+│                     via the root service credential                 │
 │  GET  /catalog/namespaces[?parent=...]  → polaris_client, session's │
 │  GET  /catalog/tables/{namespace}          creds                    │
 │  GET  /catalog/tables/{namespace}/{table}/schema                    │
@@ -63,13 +65,14 @@ Two things converge to justify identity as the foundation of this pass:
 │                     record a history row, return rows               │
 │  GET  /history   → this principal's past queries, from Postgres     │
 └────────────────────────────────────────────────────────────────┘
-       │ DuckDB (per-request)         │ REST (session creds)   │ SQL
-       ▼                              ▼                        ▼
-┌─────────────┐              ┌───────────────┐        ┌──────────────────┐
-│ Polaris      │◄─────────────│ Iceberg REST  │        │ Postgres           │
-│ (data query) │  vended creds │ Catalog API   │        │ lakehouse_ui DB    │
-└─────────────┘              └───────────────┘        │ on polaris-postgres │
-                                                          └──────────────────┘
+       │ DuckDB / REST, session   │ REST, root svc   │ SQL
+       │ creds (data + catalog)   │ creds (/me only)  │
+       ▼                          ▼                   ▼
+┌─────────────┐          ┌────────────────┐    ┌──────────────────┐
+│ Polaris      │◄─────────│ Iceberg REST /  │    │ Postgres           │
+│ (data query) │ vended    │ Management API  │    │ lakehouse_ui DB    │
+└─────────────┘  creds    └────────────────┘    │ on polaris-postgres │
+                                                    └──────────────────┘
 ```
 
 ## Components
@@ -81,13 +84,18 @@ endpoint (`POST {POLARIS_ENDPOINT}/v1/oauth/tokens`, `grant_type=client_credenti
 directly (no DuckDB involved — this is just an HTTP call). A non-200 response
 is invalid credentials → 401. On success:
 
-- Decode the returned JWT's claims for the principal name and
-  `principal_role` list (exact claim names confirmed against a real token at
-  implementation time — Polaris's docs describe the shape but a live decode
-  is the source of truth, same practice used throughout this project).
+- Decode the returned JWT's payload (base64+JSON, no signature check needed
+  — see "Infra/deployment changes" below) for the principal name: it's the
+  `sub` claim (confirmed live — a real decoded token looks like
+  `{"iss":"polaris","sub":"loader","principalId":...,"client_id":...,
+  "scope":"PRINCIPAL_ROLE:ALL"}`; note there is **no role-list claim** —
+  see the "Who am I" section's correction for how roles actually get
+  looked up).
 - Create a session: a random session ID, stored server-side (in-memory dict
   — acceptable at `replicas: 1`, matching the existing chart) mapping to
-  `{client_id, client_secret, principal_name, principal_roles, created_at}`.
+  `{client_id, client_secret, principal_name, created_at}`. Roles are not
+  cached in the session — `/me` looks them up fresh each time via the
+  root service credential (see below); cheap enough not to bother caching.
 - Set an httpOnly, samesite=lax cookie holding only the session ID — the
   actual Polaris credentials never reach client-side JS.
 
@@ -151,9 +159,18 @@ not a new StatefulSet/PVC. `charts/polaris-postgres/values.yaml` gets a
 second `customScripts` entry (alongside the existing `userDatabase`-created
 `polaris` database) creating a `lakehouse_ui` database and a dedicated
 non-superuser user for it, matching the isolation Task 9's review already
-established for the `polaris` database. New out-of-band Secret
-`lakehouse-ui-postgres` (keys: `LAKEHOUSE_UI_DB`, `LAKEHOUSE_UI_USER`,
-`LAKEHOUSE_UI_USER_PASSWORD`), mounted into the `lakehouse-ui` Deployment.
+established for the `polaris` database.
+
+**One secret, not two.** The same `polaris-postgres` Secret gets 3 new
+keys (`LAKEHOUSE_UI_DB`, `LAKEHOUSE_UI_USER_NAME`,
+`LAKEHOUSE_UI_USER_PASSWORD`) — the `customScripts` block running inside
+the Postgres pod can only read what's mounted there (the `polaris-postgres`
+Secret), so the values have to live there regardless; pointing
+`lakehouse-ui`'s Deployment at a *second*, separate secret holding the same
+values duplicated under different names is exactly the anti-pattern Task
+9's review already caught once for `polaris`/`polaris-postgres` — same fix
+applies here. `lakehouse-ui`'s Deployment mounts `polaris-postgres`
+directly (like `polaris`'s Deployment already does for its own keys).
 
 One table:
 ```sql
@@ -186,9 +203,55 @@ tab's query (existing behavior, ported over).
 ### "Who am I"
 
 A small header element: `{principal_name} · {principal_roles joined}`,
-populated from `GET /me` (reads straight from the session, no extra Polaris
-call) on page load. A "Log out" action next to it calls `POST /logout` and
-returns to the login screen.
+populated from `GET /me` on page load. A "Log out" action next to it calls
+`POST /logout` and returns to the login screen.
+
+**Correction from a live check against the real Polaris deployment**: the
+login token's JWT claims do **not** include role names (confirmed by
+decoding a real token — `sub`, `principalId`, `client_id`, `scope`, no
+roles), and a regular principal is **not authorized to list its own roles**
+via the Management API (`GET /principals/{name}/principal-roles` 403s for
+a non-admin principal, confirmed live with the `loader` principal). So
+`/me` cannot be answered from the session alone.
+
+Fix: the app backend holds its own **root-level Polaris service
+credential** (reusing the existing `polaris-root-credentials` Secret,
+already created by `bootstrap/polaris-setup.sh`) used *only* for this one
+lookup — `GET /principals/{sub}/principal-roles` as root, where `{sub}` is
+the logged-in principal's own name from their login JWT. This is a real
+trust boundary worth being explicit about: the app process holds a
+root-equivalent Polaris credential, kept separate from and never used for
+the per-session credentials that run actual data queries (those still run
+strictly as the logged-in principal, Polaris-authorized per their own
+grants). Confirmed live: `GET /principals/loader/principal-roles` as root
+returns `{"roles":[{"name":"loader_role",...}]}` — the shape `/me` needs.
+
+### Infra/deployment changes
+
+- `charts/lakehouse-ui/`: remove the fixed `POLARIS_CLIENT_ID`/
+  `POLARIS_CLIENT_SECRET` env vars and the `lakehouse-ui-polaris-credentials`
+  Secret reference (login replaces them for the user-facing path); keep
+  `POLARIS_ENDPOINT`/`POLARIS_CATALOG`. Add `POLARIS_ROOT_CLIENT_ID`/
+  `POLARIS_ROOT_CLIENT_SECRET`, sourced from the existing
+  `polaris-root-credentials` Secret — the service-level credential `/me`
+  uses. Add `LAKEHOUSE_UI_DB_HOST` (plain value, `polaris-postgres`),
+  `LAKEHOUSE_UI_DB_NAME`/`LAKEHOUSE_UI_DB_USER`/`LAKEHOUSE_UI_DB_PASSWORD`
+  sourced from the (extended) `polaris-postgres` Secret's `LAKEHOUSE_UI_DB`/
+  `LAKEHOUSE_UI_USER_NAME`/`LAKEHOUSE_UI_USER_PASSWORD` keys.
+- `charts/polaris-postgres/values.yaml`: add a second `customScripts` entry
+  (alongside the existing `userDatabase`-created `polaris` database)
+  creating a `lakehouse_ui` database and a dedicated non-superuser user for
+  it — same isolation pattern Task 9's review established for `polaris`'s
+  own database. 3 new keys added to the existing `polaris-postgres` Secret
+  out of band: `LAKEHOUSE_UI_DB`, `LAKEHOUSE_UI_USER_NAME`,
+  `LAKEHOUSE_UI_USER_PASSWORD` — no new Secret, no new StatefulSet/PVC.
+- `requirements.txt`: add a Postgres driver (`psycopg[binary]`) for the
+  query-history table. No JWT library needed — the JWT's payload segment
+  is just base64+JSON, decoded with stdlib (`base64`, `json`); its
+  signature doesn't need independent verification since the token is
+  already trusted (we received it directly from Polaris over the same
+  connection we're about to use it on, not a token presented by a third
+  party).
 
 ## Data flow (a query, end to end)
 
