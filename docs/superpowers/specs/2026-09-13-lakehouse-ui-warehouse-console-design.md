@@ -234,7 +234,13 @@ returns `{"roles":[{"name":"loader_role",...}]}` — the shape `/me` needs.
   `POLARIS_ENDPOINT`/`POLARIS_CATALOG`. Add `POLARIS_ROOT_CLIENT_ID`/
   `POLARIS_ROOT_CLIENT_SECRET`, sourced from the existing
   `polaris-root-credentials` Secret — the service-level credential `/me`
-  uses. Add `LAKEHOUSE_UI_DB_HOST` (plain value, `polaris-postgres`),
+  uses. Also add `POLARIS_MANAGEMENT_ENDPOINT` (plain value,
+  `http://polaris.lakehouse.svc.cluster.local:8181/api/management`) — the
+  Management API (principals/roles) lives at a **different base path**
+  than `POLARIS_ENDPOINT`'s `/api/catalog` (confirmed live: `/api/catalog`
+  and `/api/management` are siblings under the same host:port, not
+  nested), so this needs its own explicit config rather than being derived
+  by string-manipulating `POLARIS_ENDPOINT`. Add `LAKEHOUSE_UI_DB_HOST` (plain value, `polaris-postgres`),
   `LAKEHOUSE_UI_DB_NAME`/`LAKEHOUSE_UI_DB_USER`/`LAKEHOUSE_UI_DB_PASSWORD`
   sourced from the (extended) `polaris-postgres` Secret's `LAKEHOUSE_UI_DB`/
   `LAKEHOUSE_UI_USER_NAME`/`LAKEHOUSE_UI_USER_PASSWORD` keys.
