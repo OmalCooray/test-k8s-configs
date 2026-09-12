@@ -41,18 +41,37 @@ spec:
           env:
             - name: POLARIS_ENDPOINT
               value: {{ .Values.polaris.endpoint | quote }}
+            - name: POLARIS_MANAGEMENT_ENDPOINT
+              value: {{ .Values.polaris.managementEndpoint | quote }}
             - name: POLARIS_CATALOG
               value: {{ .Values.polaris.catalog | quote }}
-            - name: POLARIS_CLIENT_ID
+            - name: POLARIS_ROOT_CLIENT_ID
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.polaris.credentialsSecret }}
-                  key: POLARIS_CLIENT_ID
-            - name: POLARIS_CLIENT_SECRET
+                  name: {{ .Values.polaris.rootCredentialsSecret }}
+                  key: CLIENT_ID
+            - name: POLARIS_ROOT_CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.polaris.credentialsSecret }}
-                  key: POLARIS_CLIENT_SECRET
+                  name: {{ .Values.polaris.rootCredentialsSecret }}
+                  key: CLIENT_SECRET
+            - name: LAKEHOUSE_UI_DB_HOST
+              value: {{ .Values.postgres.host | quote }}
+            - name: LAKEHOUSE_UI_DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.credentialsSecret }}
+                  key: LAKEHOUSE_UI_DB
+            - name: LAKEHOUSE_UI_DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.credentialsSecret }}
+                  key: LAKEHOUSE_UI_USER_NAME
+            - name: LAKEHOUSE_UI_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.credentialsSecret }}
+                  key: LAKEHOUSE_UI_USER_PASSWORD
           livenessProbe:
             httpGet: {path: /healthz, port: http}
             initialDelaySeconds: 5

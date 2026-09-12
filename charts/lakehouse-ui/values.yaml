@@ -7,10 +7,22 @@ image:
 
 polaris:
   endpoint: http://polaris.lakehouse.svc.cluster.local:8181/api/catalog
+  managementEndpoint: http://polaris.lakehouse.svc.cluster.local:8181/api/management
   catalog: lakehouse
-  # Secret with POLARIS_CLIENT_ID / POLARIS_CLIENT_SECRET (created out of
-  # band by bootstrap/polaris-setup.sh, not in git — see Task 13/15).
-  credentialsSecret: lakehouse-ui-polaris-credentials
+  # Secret with CLIENT_ID / CLIENT_SECRET (created out of band by
+  # bootstrap/polaris-setup.sh, not in git) — the app's own root-level
+  # service credential, used only by /me. Per-user login credentials are
+  # NOT here — they come from the login form, never baked into the
+  # Deployment.
+  rootCredentialsSecret: polaris-root-credentials
+
+postgres:
+  host: polaris-postgres
+  # Secret with LAKEHOUSE_UI_DB / LAKEHOUSE_UI_USER_NAME /
+  # LAKEHOUSE_UI_USER_PASSWORD keys — the SAME Secret
+  # charts/polaris-postgres/values.yaml's customScripts reads (one
+  # secret, not two — see the design doc's correction on this).
+  credentialsSecret: polaris-postgres
 
 resources:
   requests: {cpu: 100m, memory: 256Mi}
