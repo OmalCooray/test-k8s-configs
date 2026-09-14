@@ -73,12 +73,23 @@ client_secret = os.environ["LOADER_CLIENT_SECRET"]
 
 # Pull the 22 canonical query texts locally (pure in-memory DuckDB, no
 # catalog attach) so the load test sends the exact same queries
-# tpch_bench.py used for the raw-engine numbers.
+# tpch_bench.py used for the raw-engine numbers. Their FROM clauses are
+# unqualified (`FROM lineitem`, not `FROM lakehouse.tpch.lineitem`) --
+# tpch_bench.py handles that with its own connection's `USE
+# lakehouse.tpch`, but lakehouse-ui's /query route builds a brand new
+# connection per request with no default schema, so an unqualified query
+# submitted as-is 400s with "Table with name lineitem does not exist"
+# (confirmed live, 2026-09-14: the first real run of this script hit a
+# 100% error rate at every concurrency level for exactly this reason).
+# Prepending `USE lakehouse.tpch;` as a second statement works because
+# /query already supports multi-statement SQL (main.py's own
+# test_query_allows_multi_statement_sql_now covers this).
 _con = duckdb.connect(":memory:")
 _con.execute("INSTALL tpch")
 _con.execute("LOAD tpch")
-QUERIES = _con.execute("SELECT query_nr, query FROM tpch_queries() ORDER BY query_nr").fetchall()
+_raw_queries = _con.execute("SELECT query_nr, query FROM tpch_queries() ORDER BY query_nr").fetchall()
 _con.close()
+QUERIES = [(query_nr, f"USE lakehouse.tpch;\n{query}") for query_nr, query in _raw_queries]
 print(f"Loaded {len(QUERIES)} queries to drive the load test with.", flush=True)
 
 client = httpx.Client(base_url=BASE_URL, timeout=120.0)
