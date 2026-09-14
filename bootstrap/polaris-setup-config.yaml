@@ -49,3 +49,4 @@ catalogs:
             - NAMESPACE_LIST
     namespaces:
       - nyc_taxi
+      - tpch
