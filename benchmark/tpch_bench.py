@@ -25,7 +25,7 @@ DuckDB-native number wouldn't have to).
           "containers": [{
             "name": "runner",
             "image": "python:3.12-slim",
-            "command": ["/bin/sh", "-c", "pip install --quiet duckdb==1.5.3 && python /scripts/tpch_bench.py"],
+            "command": ["/bin/sh", "-c", "pip install --quiet duckdb==1.5.3 && python /scripts/tpch_bench.py && sleep 300"],
             "env": [
               {"name": "POLARIS_CLIENT_ID", "valueFrom": {"secretKeyRef": {"name": "loader-polaris-credentials", "key": "CLIENT_ID"}}},
               {"name": "POLARIS_CLIENT_SECRET", "valueFrom": {"secretKeyRef": {"name": "loader-polaris-credentials", "key": "CLIENT_SECRET"}}}
@@ -36,11 +36,20 @@ DuckDB-native number wouldn't have to).
         }
       }'
 
-    kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/tpch-bench -n lakehouse --timeout=600s
-    kubectl logs tpch-bench -n lakehouse
+    kubectl logs -f tpch-bench -n lakehouse   # watch until the "Done." line
     kubectl cp lakehouse/tpch-bench:/tmp/tpch_sf1_raw_latency.csv benchmark/results/tpch_sf1_raw_latency.csv
     kubectl delete pod tpch-bench -n lakehouse
     kubectl delete configmap tpch-bench -n lakehouse
+
+(The trailing `&& sleep 300` matters: `kubectl cp` execs into the
+container to run `tar`, which fails once the container has already
+exited -- confirmed live, 2026-09-14, a `restart=Never` pod that already
+reached `Succeeded` can't be exec'd into at all, so the pod's phase never
+becoming `Succeeded` while `sleep 300` runs is intentional, not a hang --
+it's what keeps the container alive long enough for `kubectl cp` to work.
+Run `kubectl cp` as soon as you see the script's own "Done." line in the
+logs; `kubectl delete pod` cleans up immediately once you're done, you
+don't have to wait out the full 300s.)
 """
 import csv
 import os

@@ -26,7 +26,7 @@ number, and status code is recorded.
           "containers": [{
             "name": "runner",
             "image": "python:3.12-slim",
-            "command": ["/bin/sh", "-c", "pip install --quiet httpx==0.27.2 duckdb==1.5.3 && python /scripts/load_test.py"],
+            "command": ["/bin/sh", "-c", "pip install --quiet httpx==0.27.2 duckdb==1.5.3 && python /scripts/load_test.py && sleep 300"],
             "env": [
               {"name": "LOADER_CLIENT_ID", "valueFrom": {"secretKeyRef": {"name": "loader-polaris-credentials", "key": "CLIENT_ID"}}},
               {"name": "LOADER_CLIENT_SECRET", "valueFrom": {"secretKeyRef": {"name": "loader-polaris-credentials", "key": "CLIENT_SECRET"}}}
@@ -37,15 +37,20 @@ number, and status code is recorded.
         }
       }'
 
-    kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/load-test -n lakehouse --timeout=1200s
-    kubectl logs load-test -n lakehouse
+    kubectl logs -f load-test -n lakehouse   # watch until the "Done." line
     kubectl cp lakehouse/load-test:/tmp/load_test_raw.csv benchmark/results/load_test_raw.csv
     kubectl delete pod load-test -n lakehouse
     kubectl delete configmap load-test -n lakehouse
 
 (This needs duckdb installed too, only to fetch the 22 canonical query
 texts from tpch_queries() locally -- it never attaches the lakehouse
-catalog itself, all querying happens over HTTP against lakehouse-ui.)
+catalog itself, all querying happens over HTTP against lakehouse-ui. The
+trailing `&& sleep 300` matters: `kubectl cp` execs into the container to
+run `tar`, which fails once the container has already exited -- confirmed
+live, 2026-09-14, a `restart=Never` pod that already reached `Succeeded`
+can't be exec'd into at all. Run `kubectl cp` as soon as you see the
+script's own "Done." line in the logs; `kubectl delete pod` cleans up
+immediately once you're done, you don't have to wait out the full 300s.)
 """
 import csv
 import os
