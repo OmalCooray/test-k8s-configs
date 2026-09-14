@@ -184,3 +184,77 @@ Phase 4:  our CSVs + published reference numbers (web research)
 - Tuning or reconfiguring the stack in response to what the benchmark
   finds — this pass measures, it doesn't optimize. Any follow-up
   performance work based on the results is a separate future project.
+
+## Verification results (2026-09-14, live against the real cluster)
+
+All Definition of Done items above were verified live. Three real bugs
+surfaced during Tasks 6-9 that no amount of code review would have
+caught, because none of them exercised the actual live path:
+
+1. **`kubectl cp` failed on every completed pod.** All three one-off
+   benchmark pods use `restart=Never`, and once a container reaches
+   `Succeeded` there's nothing left to exec into — `kubectl cp` execs a
+   `tar` under the hood, so it failed 100% of the time on a pod that had
+   already finished. Fixed by appending `&& sleep 300` to each pod's
+   command, keeping the container alive long enough to `cp` the results
+   out before deleting it. The very first `tpch_bench.py` run's CSV had
+   to be reconstructed from `kubectl logs` output instead (`kubectl logs`
+   still works on a completed pod) — all 110 timings were present in the
+   log text and parsed out losslessly, confirmed by re-diffing row counts
+   against the printed per-query summaries.
+2. **`load_test.py`'s first real run hit a 100% error rate at every
+   concurrency level** — before any memory pressure was involved.
+   `tpch_queries()`'s canonical text uses unqualified table names (`FROM
+   lineitem`), which resolve fine inside `tpch_bench.py`'s single
+   long-lived connection (it runs `USE lakehouse.tpch` once), but
+   `lakehouse-ui`'s `/query` route builds a fresh connection per HTTP
+   request with no default schema — every request 400'd with "Table with
+   name lineitem does not exist." Reproduced directly with `curl` both
+   ways to confirm before fixing; fixed by prepending `USE
+   lakehouse.tpch;` to each query before sending it.
+3. **One crash poisoned every request after it.** `lakehouse-ui`'s
+   session store is in-memory (`app/session.py`); `load_test.py` logged
+   in exactly once at the start. When the app OOMKilled under
+   concurrency=5 (see below) and restarted, every subsequent request
+   401'd for the rest of that run, even long after the app itself had
+   recovered — poisoning what should have been 3 of the 4 concurrency
+   levels' data. Fixed by re-logging in (behind a lock, so concurrent
+   workers don't all hammer `/login` at once) whenever a request comes
+   back 401, then retrying it once. Rerunning after this fix produced the
+   complete, honest 4-level dataset reported below.
+
+With all three fixed, every Definition of Done item was reverified:
+
+- ✅ All 8 TPC-H tables loaded with row counts matching the known SF1
+  reference counts exactly, including the canonical `lineitem: 6,001,215`
+  — independently reconfirmed through `lakehouse-ui`'s own `/query`
+  endpoint (a different code path than the loader script), not just the
+  loader script's own assertion.
+- ✅ All 22 standard queries ran successfully (5 runs each = 110 timings)
+  against the real stack with no errors. Sum of warm-median latencies
+  across all 22 queries: ~2.0s. Sum of cold-run latencies: ~5.1s (a 2.5×
+  penalty for the extra Polaris metadata fetch + MinIO credential vend
+  every first touch pays).
+- ✅ Load test completed all 4 concurrency levels (5,276 total requests)
+  — and found a real ceiling, not a clean scaling curve: concurrency=1
+  ran perfectly (0% errors, p50=2,012ms), concurrency=5 collapsed to
+  99.7% errors as `lakehouse-ui` (512Mi memory limit) repeatedly
+  OOMKilled under concurrent analytical joins, confirmed directly via
+  `kubectl describe pod` (`reason: OOMKilled`, exit code 137) and a
+  genuine `CrashLoopBackOff` that only cleared once load stopped.
+  Concurrency=10 and 20 showed the same near-total failure — this is
+  exactly the kind of finding the DoD anticipated as valid: knowing where
+  the ceiling is, not that there isn't one.
+- ✅ Published HTML report compares our raw-engine numbers to DuckDB's
+  own published SF1 single-thread numbers (3 queries with a sourced
+  reference point: Q1, Q9, Q19, from a real GitHub issue discussion —
+  disclosed that a complete published SF1 table across all 22 queries
+  wasn't found in public sources checked), with per-query, cold-vs-warm,
+  and concurrency-scaling charts. Report:
+  https://claude.ai/code/artifact/5f1b6c05-aa6e-448c-8b97-2513b3fc6b86
+- ✅ `benchmark/results/tpch_sf1_raw_latency.csv` (110 rows) and
+  `benchmark/results/load_test_raw.csv` (5,276 rows) committed to the
+  repo.
+- ✅ `benchmark/README.md` accurate — it defers to each script's own
+  docstring for the exact run commands, so the `sleep 300` /
+  session-resilience fixes above didn't require a separate README update.
