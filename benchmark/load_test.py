@@ -93,9 +93,15 @@ QUERIES = [(query_nr, f"USE lakehouse.tpch;\n{query}") for query_nr, query in _r
 print(f"Loaded {len(QUERIES)} queries to drive the load test with.", flush=True)
 
 client = httpx.Client(base_url=BASE_URL, timeout=120.0)
+login_lock = threading.Lock()
 
-login_resp = client.post("/login", json={"client_id": client_id, "client_secret": client_secret})
-login_resp.raise_for_status()
+
+def _login() -> None:
+    resp = client.post("/login", json={"client_id": client_id, "client_secret": client_secret})
+    resp.raise_for_status()
+
+
+_login()
 print("Logged in.", flush=True)
 
 results = []
@@ -108,6 +114,16 @@ def worker(concurrency_level: int, stop_at: float) -> None:
         started = time.monotonic()
         try:
             resp = client.post("/query", json={"sql": query_text})
+            if resp.status_code == 401:
+                # The session is server-side in-memory (app/session.py) --
+                # a restart (e.g. the liveness-probe-driven one this
+                # benchmark itself triggered live, 2026-09-14) wipes it,
+                # and every request would otherwise 401 for the rest of
+                # the run. Re-login once and retry rather than let one
+                # restart poison every remaining concurrency level's data.
+                with login_lock:
+                    _login()
+                resp = client.post("/query", json={"sql": query_text})
             status_code = resp.status_code
         except httpx.HTTPError:
             status_code = -1
