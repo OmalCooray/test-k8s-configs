@@ -1,4 +1,4 @@
 # Per-environment overrides for lakehouse-ui in local.
 # Pinned to the sha tag published by lakehouse-ui's CI (never :latest in-cluster).
 image:
-  tag: "sha-f65d7df"
+  tag: "sha-2510622"
