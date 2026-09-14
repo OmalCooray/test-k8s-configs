@@ -115,15 +115,27 @@ Secret this script just created:
     --client-id root --client-secret "$ROOT_CLIENT_SECRET" \
     setup apply bootstrap/polaris-setup-config.yaml
 
-Then read its output for the generated "loader" and "lakehouse-ui" principal
-credentials (printed once, at creation) and store them:
+Then read its output: two JSON lines, one per principal (in the same order
+as `principals:` in polaris-setup-config.yaml — loader first, lakehouse-ui
+second), each `{"clientId": "...", "clientSecret": "..."}`.
+
+IMPORTANT: unlike `root` (whose client_id really is the literal string
+"root", because the admin-tool's `bootstrap` command sets it explicitly),
+`loader` and `lakehouse-ui` here are principal *names*, not OAuth
+client_ids — `setup apply`'s principal-creation flow auto-generates an
+opaque clientId for each one. Use that printed clientId as CLIENT_ID below,
+NOT the principal's name — `client_id=loader` gets a real, silent
+"unauthorized_client" from Polaris's OAuth endpoint (confirmed live:
+2026-09-14, first Definition-of-Done rerun after a cluster reset). Store the
+printed clientId/clientSecret pair as-is:
 
   kubectl create secret generic loader-polaris-credentials -n lakehouse \
-    --from-literal=CLIENT_ID=loader --from-literal=CLIENT_SECRET=<printed>
+    --from-literal=CLIENT_ID=<printed clientId for loader> \
+    --from-literal=CLIENT_SECRET=<printed clientSecret for loader>
 
   kubectl create secret generic lakehouse-ui-polaris-credentials -n lakehouse \
-    --from-literal=POLARIS_CLIENT_ID=lakehouse-ui \
-    --from-literal=POLARIS_CLIENT_SECRET=<printed>
+    --from-literal=POLARIS_CLIENT_ID=<printed clientId for lakehouse-ui> \
+    --from-literal=POLARIS_CLIENT_SECRET=<printed clientSecret for lakehouse-ui>
 
 If the dry run instead reports an invalid field in polaris-setup-config.yaml
 (likely the S3 storage block — endpoint/region/path_style_access), run
