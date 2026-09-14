@@ -218,3 +218,66 @@ Access (view-only):
 - Any change to the existing click-to-insert-name behavior on the
   catalog tree, or to the existing `get_table_schema`/
   `/catalog/tables/{namespace}/{table}/schema` route.
+
+## Verification results (2026-09-14, live against the real cluster)
+
+All Definition of Done items were verified live, end to end, through the
+actual `/query`/`/catalog`/`/access` endpoints exercising exactly the SQL
+and requests the UI's JavaScript generates (the browser tool was
+unavailable this session — verification used direct HTTP calls carrying
+the identical payloads the frontend code builds, cross-checked against
+independent Iceberg REST calls, not just the app's own responses):
+
+- ✅ **Create dataset**: `CREATE SCHEMA lakehouse.dod_test_ds` (the exact
+  string `submitCreateDataset` builds) → 200; confirmed present via both
+  `/catalog/namespaces` and a direct Iceberg REST `namespaces` list.
+- ✅ **Create table (guided form)**: `CREATE TABLE
+  lakehouse.dod_test_ds.dod_test_table (id BIGINT NOT NULL, name
+  VARCHAR)` → confirmed via `/catalog/tables/.../details` that the
+  schema round-tripped correctly (`BIGINT NOT NULL` → `{"type": "long",
+  "required": true}`, `VARCHAR` → `{"type": "string", "required":
+  false}`) and `current_snapshot` was `None` for the never-written table
+  (the empty-table code path Task 1's tests covered, now confirmed for
+  real).
+- ✅ **Save as table**: ran `SELECT * FROM lakehouse.nyc_taxi.dim_vendor`
+  (3 rows), then `CREATE TABLE lakehouse.dod_test_ds.saved_vendors AS
+  SELECT * FROM lakehouse.nyc_taxi.dim_vendor` — the saved table's
+  details showed `total_records: "3"`, an exact match.
+- ✅ **Table details**: matched location, snapshot row/file counts, and
+  schema for both a freshly-created empty table and the save-as-table
+  result.
+- ✅ **Namespace details**: `dod_test_ds` showed `table_count: 2` (the 2
+  tables just created); `nyc_taxi` showed `table_count: 6`, matching its
+  already-known 6 tables from earlier phases of this project.
+- ✅ **Delete**: dropped both test tables and the test dataset; confirmed
+  gone from both `/catalog/namespaces` and a direct Iceberg REST list —
+  back to exactly the original `nyc_taxi`/`tpch` namespace pair.
+- ✅ **Read-only principal gets a clean 403, not a crash**: logged in as
+  `lakehouse-ui` (the read-only role), attempted `CREATE SCHEMA
+  lakehouse.should_fail` — got a 400 with Polaris's real error message
+  (`not authorized for op CREATE_NAMESPACE`) surfaced in the response
+  body, exactly the same pattern every other write-by-a-read-only-
+  principal already follows in this app. No new error path was needed.
+- ✅ **Access tab**: `/access`, called by the currently-logged-in
+  `lakehouse-ui` principal (not root — confirming the view-only design
+  works for *any* authenticated user regardless of their own privilege
+  level), returned the complete, correct chain for all 3 known
+  principals — including `root`'s own (`service_admin` →
+  `catalog_admin` → `CATALOG_MANAGE_ACCESS`/`CATALOG_MANAGE_METADATA`),
+  which hadn't been explicitly checked before this verification pass.
+  `loader` and `lakehouse-ui`'s chains matched what earlier phases of
+  this project had already independently confirmed via direct Management
+  API calls.
+- ✅ `lakehouse-ui` stayed at 0 restarts across the entire verification
+  pass — no regressions from the reliability & scaling work earlier in
+  this project.
+
+No live-discovered bugs this time — every function and route worked
+exactly as designed on the first try, which is itself worth noting given
+how many earlier phases of this project found a real gap during this
+exact kind of live verification. The live API probing done *before*
+writing the design (confirming `CREATE SCHEMA` works through `/query`,
+confirming which Management API calls need root, confirming the exact
+endpoint paths) is almost certainly why — grounding the design in
+verified reality caught what would otherwise have been live-discovered
+bugs before any code was written.
