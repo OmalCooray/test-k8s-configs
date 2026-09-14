@@ -144,3 +144,66 @@ After:  /query -> acquire 1 of 3 semaphore slots (or 429 immediately)
   `session_store.py` (mirroring `history.py`'s existing test patterns:
   owns-connection vs caller-provides-connection, TTL expiry) and for the
   429 path on `/query`.
+
+## Verification results (2026-09-14, live against the real cluster)
+
+All Definition of Done items above were verified live, plus one real
+discrepancy the implementer caught and fixed correctly rather than
+working around:
+
+- **All 6 route test files actually imported from `app.session`, not
+  `app.session_store`** as the plan's worked example assumed. Since
+  `app.main` itself was already switched to import from
+  `app.session_store`, this meant those tests' `_logged_in_cookie()`
+  helper was writing sessions into a completely disconnected, orphaned
+  module — exactly why they were failing/hanging rather than a more
+  obviously-wrong error. The implementer traced this to the real import
+  path before applying the fix, rather than guessing. No plan
+  update needed since the underlying pattern (monkeypatch
+  `main_module.create_session`/`get_session` via the shared
+  `tests/conftest.py` fixture) was correct either way — only the
+  "current import" assumption in the worked example was off.
+
+With that resolved, every DoD item was reconfirmed:
+
+- ✅ Full `pytest` suite green throughout every intermediate task (32
+  expected failures mid-sequence, all 6 concentrated in the predicted
+  files, all resolved by Task 4) — 93 passing on `main` after Task 6
+  removed the superseded `app/session.py`/`tests/test_session.py`.
+- ✅ Logged in, ran `kubectl rollout restart deployment/lakehouse-ui`,
+  confirmed the *same* session cookie still worked immediately after —
+  no re-login needed. This is the exact scenario that broke mid-benchmark
+  before this work.
+- ✅ Cross-replica session sharing: port-forwarded to each of the 2 pods
+  individually, logged in against one, confirmed `/me` succeeded against
+  the *other* — sessions are no longer pod-local.
+- ✅ Concurrency guard, tested directly: 4 near-simultaneous heavy queries
+  (a self-cross-join over `lineitem`, ~30M rows) against one pod — 3
+  succeeded with correct, matching results; the 4th got a clean `429`
+  immediately. No hang, no 500, no crash.
+- ✅ Reran `benchmark/load_test.py`'s full 4-level sweep (results:
+  `benchmark/results/load_test_raw_post_reliability_fix.csv`) — the real
+  before/after comparison:
+
+  | Concurrency | Before (this doc's design context) | After |
+  |---|---|---|
+  | 1 | 0% errors, p50=2,012ms | 0% errors, p50=1,517ms |
+  | 5 | **99.7% errors, repeated OOMKilled/CrashLoopBackOff** | 97.9% errors, **0 restarts, 0 OOM events** — every "error" is a clean 429 |
+  | 10 | 99.8% errors, crash-looping | 98.3% errors, 0 restarts |
+  | 20 | 100% errors, crash-looping | 99.0% errors, 0 restarts |
+
+  The error *rate* at concurrency≥5 looks superficially similar to
+  before, but the underlying behavior is completely different: before,
+  those were connection failures and 60+ second stragglers from a pod
+  stuck OOMKilling and restarting in a loop; after, `kubectl get events`
+  shows zero `OOMKilled`/`Unhealthy`/`BackOff` events for the whole run,
+  and every rejected request is an instant, correct 429 — successful
+  requests at concurrency=5 now complete with p50=2,394ms (vs. the old
+  p50=66,843ms for the handful that got through before). The system
+  degrades by saying no quickly, not by falling over. This matches the
+  design's own framing exactly: "the DoD is that we know where the
+  ceiling is, not that there isn't one" — the ceiling is real (6 total
+  concurrent-query slots across 2 replicas × 3 each), but crossing it is
+  now a controlled, informative failure instead of a cascading one.
+- ✅ `helm lint` clean; live `Deployment` confirmed at `replicas: 2`,
+  `resources.limits.memory: 2Gi`, `resources.requests.memory: 512Mi`.
